@@ -4,6 +4,11 @@ All notable changes follow Keep a Changelog conventions. The project uses semant
 
 ## [Unreleased]
 
+### Fixed
+
+- Store derived 100 m wind power density as `float32` so extreme hurricane-force winds cannot
+  overflow a statically planned `int16` range.
+
 ## [0.2.0] - 2026-07-31
 
 ### Added

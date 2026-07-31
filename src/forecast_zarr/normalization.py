@@ -320,7 +320,7 @@ SPECS: tuple[VariableSpec, ...] = (
         None,
         "100 metre wind power density using 80 metre moist-air density",
         1,
-        (0, 20_000),
+        None,
         group="derived",
     ),
     VariableSpec(

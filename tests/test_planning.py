@@ -6,7 +6,7 @@ from forecast_zarr.config import ChunkingConfig, StorageConfig
 from forecast_zarr.inspection import inspect_run
 from forecast_zarr.layout import choose_layout
 from forecast_zarr.planning import create_plan
-from tests.helpers import processor_config, source_run
+from tests.helpers import energy_source_run, processor_config, source_run
 
 
 def test_layout_targets_bounded_shards() -> None:
@@ -48,3 +48,24 @@ def test_tiny_output_budget_fails_plan(tmp_path: Path) -> None:
     )
     report = inspect_run(config, reader=reader)
     assert not create_plan(config, report).budget.passes
+
+
+def test_wind_power_density_uses_float32_for_unbounded_extremes(tmp_path: Path) -> None:
+    run_dir, reader = energy_source_run(tmp_path)
+    variables = (
+        "eastward_wind_100m",
+        "northward_wind_100m",
+        "air_temperature_80m",
+        "specific_humidity_80m",
+        "air_pressure_80m",
+        "wind_power_density_100m",
+    )
+    config = processor_config(tmp_path, run_dir).model_copy(
+        update={"variables": variables, "required_variables": variables}
+    )
+
+    plan = create_plan(config, inspect_run(config, reader=reader))
+    wind_power = next(item for item in plan.variables if item.name == "wind_power_density_100m")
+
+    assert wind_power.encoding.dtype == "float32"
+    assert wind_power.encoding.fallback_reason == "derived_range_unknown"
