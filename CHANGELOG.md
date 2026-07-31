@@ -12,7 +12,10 @@ All notable changes follow Keep a Changelog conventions. The project uses semant
 - Budget-first planning, resumable staging, sampled round-trip validation, atomic publication.
 - Typer CLI, benchmark, status command, systemd examples, and operator documentation.
 
+### Fixed
+
+- Quote longitude conventions in distributed YAML configurations so they load as strings.
+
 ## [0.1.0] - 2026-07-31
 
 - Initial publication-ready implementation.
-

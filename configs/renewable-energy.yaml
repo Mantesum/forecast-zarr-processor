@@ -1,7 +1,7 @@
 input_run: ../data/raw/noaa-gfs/gfs/20250101T000000Z/replace-with-request-hash
 output_root: ../data/zarr
 encoding: api_compact
-longitude_convention: -180_180
+longitude_convention: "-180_180"
 variables:
   - eastward_wind_10m
   - northward_wind_10m
@@ -32,4 +32,3 @@ chunking:
   min_spatial_chunk: 90
   max_spatial_chunk: 360
   max_spatial_shard: 720
-

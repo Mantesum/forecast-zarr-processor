@@ -1,7 +1,7 @@
 input_run: ../data/raw/ecmwf-aifs-single/aifs-single/20250101T000000Z/replace-with-request-hash
 output_root: ../data/zarr
 encoding: api_compact
-longitude_convention: -180_180
+longitude_convention: "-180_180"
 crop_to_manifest_regions: true
 resume: true
 compression_level: 7
@@ -36,4 +36,3 @@ validation:
   random_seed: 20250308
   point_samples: 24
   bbox_samples: 4
-
