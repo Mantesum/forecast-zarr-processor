@@ -34,7 +34,7 @@ Primary fields use `(valid_time, latitude, longitude)`. Latitude is strictly inc
 
 ## Quick start
 
-Install the system ecCodes package first (see [Ubuntu deployment](docs/ubuntu-deployment.md)), then:
+The Python environment includes the ECMWF ecCodes binary library on supported platforms. Install the project with:
 
 ```bash
 uv sync --group dev

@@ -1,13 +1,12 @@
 # Ubuntu deployment
 
-These are operator instructions only; the project does not install system packages or change a host automatically.
+These are operator instructions only; the project does not change a host automatically.
 
 ## Prerequisites
 
-Install Python 3.12+, `uv`, and ecCodes 2.42+ using your organization's approved package source. On supported Ubuntu releases the required packages are typically `libeccodes0`, `libeccodes-dev`, and `libeccodes-tools`; confirm the available version before deployment.
+Install Python 3.12+ and `uv`. The locked Python environment installs the official ECMWF `eccodeslib` binary package (ecCodes 2.42+) on Linux. A separately managed system ecCodes installation is optional; if your organization requires one, confirm that it is version 2.42 or newer and configure the ecCodes library search explicitly.
 
 ```bash
-codes_info -v
 uv --version
 ```
 
@@ -16,6 +15,7 @@ Clone the repository into `/opt/forecast-zarr-processor`, create `/srv/forecast-
 ```bash
 cd /opt/forecast-zarr-processor
 uv sync --frozen
+uv run python -m eccodes selfcheck
 install -d -m 0750 /srv/forecast-data/zarr /srv/forecast-data/logs
 ```
 
@@ -33,4 +33,3 @@ journalctl -u forecast-zarr.service
 ```
 
 The example service is hardened, runs at most one conversion, and treats JSON stderr as journal data. A production scheduler must update the selected `input_run` after forecast-ingest publishes a new manifest. The timer alone does not discover a "latest" directory.
-

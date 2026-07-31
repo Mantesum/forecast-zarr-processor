@@ -19,6 +19,7 @@ classifiers = [
 ]
 dependencies = [
   "eccodes>=2.42",
+  "eccodeslib>=2.42; sys_platform != 'win32'",
   "numpy>=2.2",
   "pydantic>=2.10",
   "pyyaml>=6.0.2",
