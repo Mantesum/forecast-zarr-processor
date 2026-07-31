@@ -41,6 +41,9 @@ def decoded_message(
     *,
     level: float,
     units: str,
+    type_of_level: str = "heightAboveGround",
+    step_type: str = "instant",
+    message_index: int | None = None,
 ) -> DecodedMessage:
     run = datetime(2025, 1, 1, tzinfo=UTC)
     latitude = np.repeat(np.asarray([50.0, 50.25, 50.5]), 4)
@@ -49,14 +52,19 @@ def decoded_message(
     return DecodedMessage(
         MessageMeta(
             file_name=file_name,
-            message_index={"2t": 0, "10u": 1, "10v": 2}[short_name],
+            message_index=(
+                message_index
+                if message_index is not None
+                else {"2t": 0, "10u": 1, "10v": 2}[short_name]
+            ),
             short_name=short_name,
-            type_of_level="heightAboveGround",
+            type_of_level=type_of_level,
             level=level,
             units=units,
             valid_time=run + timedelta(hours=step),
             forecast_reference_time=run,
             forecast_step=step,
+            step_type=step_type,
             grid_type="regular_ll",
             ni=4,
             nj=3,

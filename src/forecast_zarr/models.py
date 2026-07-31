@@ -109,6 +109,7 @@ class MessageMeta(BaseModel):
     valid_time: datetime
     forecast_reference_time: datetime
     forecast_step: int = Field(ge=0)
+    step_type: str = "instant"
     grid_type: str
     ni: int = Field(gt=0)
     nj: int = Field(gt=0)
@@ -118,7 +119,8 @@ class MessageMeta(BaseModel):
     @property
     def identity(self) -> str:
         return (
-            f"{self.short_name}:{self.type_of_level}:{self.level:g}:{self.valid_time.isoformat()}"
+            f"{self.short_name}:{self.type_of_level}:{self.level:g}:"
+            f"{self.step_type}:{self.valid_time.isoformat()}"
         )
 
 

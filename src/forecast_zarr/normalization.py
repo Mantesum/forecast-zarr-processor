@@ -21,6 +21,7 @@ class VariableSpec:
     long_name: str
     compact_precision: float
     valid_range: tuple[float, float] | None = None
+    accepted_step_types: frozenset[str] | None = None
 
 
 SPECS: tuple[VariableSpec, ...] = (
@@ -155,6 +156,7 @@ SPECS: tuple[VariableSpec, ...] = (
         "Total cloud area fraction",
         0.0001,
         (0, 1),
+        frozenset({"instant"}),
     ),
     VariableSpec(
         "visibility_in_air",
@@ -203,6 +205,11 @@ SPECS: tuple[VariableSpec, ...] = (
 )
 
 SPECS_BY_NAME = {spec.name: spec for spec in SPECS}
+
+
+def accepts_step_type(spec: VariableSpec, step_type: str) -> bool:
+    """Return whether a GRIB statistical field matches the variable's semantics."""
+    return spec.accepted_step_types is None or step_type in spec.accepted_step_types
 
 
 def match_variable(short_name: str, type_of_level: str, level: float) -> VariableSpec | None:

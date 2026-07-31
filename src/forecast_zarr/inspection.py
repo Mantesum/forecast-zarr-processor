@@ -15,6 +15,7 @@ from forecast_zarr.manifest import load_source_manifest
 from forecast_zarr.models import GridInventory, InspectionReport, VariableInventory
 from forecast_zarr.normalization import (
     SPECS_BY_NAME,
+    accepts_step_type,
     match_variable,
     normalize_values,
     regular_grid,
@@ -102,6 +103,8 @@ def inspect_run(
             spec = match_variable(meta.short_name, meta.type_of_level, meta.level)
             if spec is None:
                 unknown.append(meta.identity)
+                continue
+            if not accepts_step_type(spec, meta.step_type):
                 continue
             canonical = normalize_values(spec, decoded.values, meta.units)
             lat_axis, lon_axis, _ = regular_grid(

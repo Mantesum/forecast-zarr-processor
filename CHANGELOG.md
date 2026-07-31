@@ -15,6 +15,7 @@ All notable changes follow Keep a Changelog conventions. The project uses semant
 ### Fixed
 
 - Quote longitude conventions in distributed YAML configurations so they load as strings.
+- Select instantaneous GFS total-cloud-cover fields instead of conflicting interval averages.
 
 ## [0.1.0] - 2026-07-31
 

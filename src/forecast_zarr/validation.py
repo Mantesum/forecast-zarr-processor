@@ -16,6 +16,7 @@ from forecast_zarr.grib import EccodesReader, GribReader
 from forecast_zarr.models import InspectionReport, ProcessingPlan
 from forecast_zarr.normalization import (
     SPECS_BY_NAME,
+    accepts_step_type,
     decode_values,
     match_variable,
     normalize_values,
@@ -141,6 +142,8 @@ def validate_round_trip(
                 decoded.meta.short_name, decoded.meta.type_of_level, decoded.meta.level
             )
             if spec is None:
+                continue
+            if not accepts_step_type(spec, decoded.meta.step_type):
                 continue
             variable = direct.get(spec.name)
             if variable is None:

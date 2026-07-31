@@ -181,7 +181,7 @@ def create_plan(config: ProcessorConfig, report: InspectionReport) -> Processing
         "crop_to_manifest_regions": config.crop_to_manifest_regions,
         "chunking": config.chunking.model_dump(mode="json"),
         "compression_level": config.compression_level,
-        "processor_schema": "1.0",
+        "processor_schema": "1.1",
     }
     dataset_id = sha256_json(identity)[:24]
     run = report.run_utc.strftime("%Y%m%dT%H%M%SZ")
