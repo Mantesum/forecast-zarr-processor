@@ -1,0 +1,35 @@
+input_run: ../data/raw/noaa-gfs/gfs/20250101T000000Z/replace-with-request-hash
+output_root: ../data/zarr
+encoding: api_compact
+longitude_convention: -180_180
+variables:
+  - eastward_wind_10m
+  - northward_wind_10m
+  - wind_speed_10m
+  - eastward_wind_100m
+  - northward_wind_100m
+  - wind_speed_100m
+  - air_temperature_2m
+  - air_pressure_at_mean_sea_level
+  - cloud_area_fraction
+  - surface_downwelling_shortwave_flux_in_air
+  - precipitation_amount
+required_variables:
+  - eastward_wind_10m
+  - northward_wind_10m
+runtime:
+  memory_budget_gib: 8
+  max_workers: 2
+storage:
+  total_budget_gib: 40
+  min_free_gib: 10
+  max_zarr_output_gib: 26
+  max_temporary_gib: 6
+chunking:
+  target_shard_mib: 8
+  time_chunk: 1
+  time_shard: 6
+  min_spatial_chunk: 90
+  max_spatial_chunk: 360
+  max_spatial_shard: 720
+

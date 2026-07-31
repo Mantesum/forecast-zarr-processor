@@ -1,0 +1,24 @@
+[Unit]
+Description=Convert a complete forecast GRIB run to Zarr v3
+After=local-fs.target
+ConditionPathExists=/etc/forecast-zarr/gfs-projecteol.yaml
+
+[Service]
+Type=oneshot
+User=forecast
+Group=forecast
+WorkingDirectory=/opt/forecast-zarr-processor
+EnvironmentFile=-/etc/forecast-zarr/forecast-zarr.env
+ExecStart=/opt/forecast-zarr-processor/.venv/bin/forecast-zarr convert --config /etc/forecast-zarr/gfs-projecteol.yaml
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+MemoryHigh=8G
+MemoryMax=9G
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/forecast-data
+TimeoutStartSec=6h
+

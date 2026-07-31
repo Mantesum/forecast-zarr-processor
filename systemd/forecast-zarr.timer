@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic forecast Zarr conversion
+
+[Timer]
+OnCalendar=*-*-* 01,07,13,19:20:00 UTC
+Persistent=true
+RandomizedDelaySec=5m
+Unit=forecast-zarr.service
+
+[Install]
+WantedBy=timers.target
