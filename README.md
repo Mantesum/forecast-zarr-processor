@@ -1,78 +1,120 @@
 # forecast-zarr-processor
 
-`forecast-zarr-processor` is a standalone, budget-aware Python 3.12 application that turns a complete [forecast-ingest](https://github.com/Mantesum/forecast-ingest) run into an immutable physical Zarr v3 store. It is the processing layer for a future ProjectEOL weather API; it does not download forecasts and does not provide an HTTP API, map server, database, or browser UI.
+`forecast-zarr-processor` converts a complete
+[`forecast-ingest`](https://github.com/Mantesum/forecast-ingest) GRIB2 run into an
+immutable, validated Zarr v3 store. Version 0.2 supports four ready-made data bundles:
+general weather, wind-power forecasting, solar-power forecasting, and their complete union.
 
-## Architecture
-
-```text
-forecast-ingest output
-  manifest.json + validated GRIB2 files
-                  |
-                  v
-discover -> inspect -> plan -> convert -> validate -> publish
-             ecCodes       staging Zarr v3        atomic rename
-                                                   + READY.json
-```
-
-The processor checks the real forecast-ingest schema 1.x contract, every file size and SHA-256, expected GRIB parameters and steps, and regular latitude/longitude geometry. It scans GRIB messages sequentially, writes one spatial field at a time, uses Zstd-compressed Zarr v3 sharding, and never materializes the complete forecast in RAM. The default limits target a 6-core, 12 GiB RAM, 50 GiB SSD Ubuntu host: two workers, an 8 GiB memory budget, a 40 GiB managed storage budget, and 10 GiB minimum free space.
-
-One forecast run becomes one store:
+The program does not download forecasts and does not expose an HTTP API. Its place in the
+pipeline is:
 
 ```text
-data/zarr/{provider}/{model}/{run_utc}/{dataset_id}.zarr/
-  zarr.json
-  coordinates/
-  surface/
-  derived/
-  provenance/
-    source-manifest.json
-    processing-manifest.json
-  READY.json
+NOAA GFS -> forecast-ingest -> validated GRIB2 -> forecast-zarr-processor -> Zarr v3 -> API/ML
 ```
 
-Primary fields use `(valid_time, latitude, longitude)`. Latitude is strictly increasing; longitude uses one recorded convention (default `[-180, 180)`). Direct u/v wind components are always retained when selected. Wind speed is the only calculated meteorological field in this release.
+## What version 0.2 processes
 
-## Quick start
+The processor understands `forecast-ingest` manifest schema 1.1 and checks the exact GRIB
+identity of every requested field: parameter, level, height, and time statistic. This is
+important for fields whose short name alone is ambiguous, including the GFS boundary-layer
+height parameter.
 
-The Python environment includes the ECMWF ecCodes binary library on supported platforms. Install the project with:
+The `full_energy` bundle writes 43 arrays:
+
+- ordinary forecast fields: temperature, humidity, dew point, pressure, 10 m wind,
+  precipitation, clouds, visibility, solar radiation, and terrain height;
+- wind-energy fields: wind components and temperature at 80/100 m, humidity and pressure at
+  80 m, gusts, boundary-layer height, friction velocity, and roughness length;
+- solar-energy fields: downwelling and upwelling shortwave radiation, downwelling longwave
+  radiation, low/middle/high cloud cover, albedo, precipitable water, snow depth, and snow
+  water equivalent;
+- calculated fields: wind speed and direction at 10/80/100 m, relative humidity and air
+  density at 80 m, the 10-to-100 m wind-shear exponent, and 100 m wind power density.
+
+The result is split into `surface/`, `height_80m/`, `height_100m/`, `atmosphere/`, and
+`derived/` groups. Every field has dimensions `(valid_time, latitude, longitude)`.
+
+For solar power, GFS shortwave radiation is a horizontal-surface irradiance input comparable
+to GHI. The processor deliberately does not invent DNI, DHI, plane-of-array irradiance, or PV
+power: those calculations require solar geometry, site coordinates, panel tilt/azimuth,
+tracking type, and equipment characteristics. They belong in a later site-specific model.
+
+## Quick start on Ubuntu
+
+Install the project and verify ecCodes:
 
 ```bash
-uv sync --group dev
-uv run forecast-zarr inspect /srv/forecast-data/raw/noaa-gfs/gfs/20250101T000000Z/REQUEST_HASH
-uv run forecast-zarr plan --config configs/gfs-projecteol.yaml
-uv run forecast-zarr convert --config configs/gfs-projecteol.yaml
-uv run forecast-zarr validate /srv/forecast-data/zarr/noaa-gfs/gfs/20250101T000000Z/DATASET_ID.zarr
+git clone https://github.com/Mantesum/forecast-zarr-processor.git
+cd forecast-zarr-processor
+uv sync --frozen
+uv run python -m eccodes selfcheck
+```
+
+See the available bundles:
+
+```bash
+uv run forecast-zarr profiles
+```
+
+Choose the configuration matching the `forecast-ingest` download:
+
+| Purpose | Ingest profile | Zarr configuration |
+|---|---|---|
+| General weather | `weather` | `configs/gfs-global-weather-10day.yaml` |
+| Wind generation | `wind_energy` | `configs/gfs-global-wind-energy-10day.yaml` |
+| Solar generation | `solar_energy` | `configs/gfs-global-solar-energy-10day.yaml` |
+| All fields in one run | `full_energy` | `configs/gfs-global-full-energy-10day.yaml` |
+
+Edit only `input_run` first. It must point to the exact directory containing the completed
+ingest `manifest.json`, for example:
+
+```yaml
+input_run: /srv/forecast-data/raw/noaa-gfs/gfs/20260731T000000Z/REQUEST_HASH
+output_root: /srv/forecast-data/zarr
+```
+
+Then inspect, plan, convert, and validate:
+
+```bash
+uv run forecast-zarr inspect /srv/forecast-data/raw/noaa-gfs/gfs/20260731T000000Z/REQUEST_HASH
+uv run forecast-zarr plan --config configs/gfs-global-full-energy-10day.yaml
+uv run forecast-zarr convert --config configs/gfs-global-full-energy-10day.yaml
+uv run forecast-zarr validate /srv/forecast-data/zarr/noaa-gfs/gfs/20260731T000000Z/DATASET_ID.zarr
 uv run forecast-zarr status --root /srv/forecast-data/zarr
 ```
 
-Update `input_run` in the example configuration to the directory containing `manifest.json`. Relative paths are resolved against the configuration file, not the current shell directory.
+Relative paths in YAML are resolved from the configuration file's directory. `plan` performs
+all safety and storage estimates but does not create a Zarr store.
 
-For AIFS Single v2:
+## Reliability and resource limits
 
-```bash
-uv run forecast-zarr plan --config configs/aifs-global-light.yaml
-uv run forecast-zarr convert --config configs/aifs-global-light.yaml
-```
+The processor verifies the source manifest, sizes, SHA-256 checksums, forecast steps, exact
+GRIB fields, and grid geometry before conversion. It reads GRIB messages sequentially and
+writes one spatial field at a time instead of loading the whole forecast into memory.
 
-Compare three layouts on a small run:
+Conversion takes place in a dataset-specific `.staging` directory and is resumable. Before
+publication, the program validates structure and sampled values against GRIB. Only then does
+it write `READY.json` and atomically expose the final store. Repeating the same input and
+effective configuration produces the same dataset ID.
 
-```bash
-uv run forecast-zarr benchmark --config configs/benchmark.yaml
-```
+Default limits target a modest Ubuntu VM: two workers, 8 GiB memory, 40 GiB managed storage,
+26 GiB maximum output, 6 GiB temporary data, and at least 10 GiB remaining disk space. Review
+these values for a global ten-day `full_energy` run before regular scheduling.
 
-The benchmark reports conversion time, store size, file count, point-read time, bbox-read time, and bytes returned by the sampled reads.
+`api_compact` encoding uses integer packing only when the observed range meets the documented
+error bound; otherwise it safely falls back to float32. Missing optional fields such as snow
+over an all-ocean subset remain fill values and do not invalidate the dataset.
 
-## Encoding and reliability
+## Operations
 
-`lossless` stores float32 values at the physical precision delivered by ecCodes. Default `api_compact` uses int16 only when the observed range fits the variable's documented maximum error (temperature and wind 0.01 in their canonical units, pressure 1 Pa). `scale_factor`, `add_offset`, `_FillValue`, and the error bound are recorded. Unsafe ranges fall back to float32 with the reason in metadata.
+Process only an ingest run whose manifest status is `complete`. Keep source GRIB until the
+Zarr store has `READY.json`, passes `forecast-zarr validate`, and any required backup is done.
+Deletion of old GRIB remains an explicit external retention step so a conversion failure can
+never remove the only source copy.
 
-Conversion uses a dataset-specific staging directory and durable checkpoint. A retry resumes completed messages. Conflicting overlaps are rejected. The store is validated against sampled GRIB points and bboxes before `READY.json` is written and the directory is atomically moved into its final location. Repeating the same input and effective configuration returns the same dataset ID.
-
-See [data model](docs/data-model.md), [operations](docs/operations.md), [Ubuntu deployment](docs/ubuntu-deployment.md), and [future map rendering](docs/future-map-rendering.md).
-
-## Known limitations
-
-Version 0.1 supports regular latitude/longitude grids only. Weather code is stored only when the provider supplies a directly usable code; it is not inferred. GFS `sdswrf` is supported as shortwave flux, while accumulated ECMWF `ssrd` is deliberately left unmapped until interval de-accumulation is implemented and tested. Multiple disjoint input boxes share one coordinate envelope, with uncovered cells represented by fill values.
+See the [data model](docs/data-model.md), [operations guide](docs/operations.md),
+[Ubuntu deployment](docs/ubuntu-deployment.md), and
+[future map rendering notes](docs/future-map-rendering.md).
 
 ## Development
 
@@ -84,8 +126,9 @@ uv run mypy --strict src
 uv run pytest
 ```
 
-Only tiny synthetic arrays and mocked GRIB readers belong in tests. Never commit forecast GRIB or Zarr datasets.
+Never commit forecast GRIB or generated Zarr datasets.
 
 ## License
 
-The software is licensed under Apache-2.0. Forecast data retain the provider license and attribution copied from the input manifest into every output store.
+The software is licensed under Apache-2.0. Forecast data retain the provider license and
+attribution copied from the input manifest into every output store.

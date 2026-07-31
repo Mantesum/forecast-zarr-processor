@@ -60,8 +60,8 @@ class ForecastStore:
             }
         )
         coordinates = root.create_group("coordinates")
-        root.create_group("surface")
-        root.create_group("derived")
+        for group_name in sorted({variable.group for variable in plan.variables}):
+            root.create_group(group_name)
         root.create_group("provenance")
         compressor = [ZstdCodec(level=config.compression_level)]
         time_values = np.asarray(
@@ -127,7 +127,6 @@ class ForecastStore:
                 "_ARRAY_DIMENSIONS": ["valid_time", "latitude", "longitude"],
                 "units": variable.units,
                 "long_name": variable.long_name,
-                "source_grib_parameters": list(variable.source_short_names),
                 "source_grib_levels": list(variable.source_levels),
                 "forecast_reference_time": plan.run_utc.isoformat(),
                 "grid_mapping": "regular_latitude_longitude",
@@ -140,9 +139,22 @@ class ForecastStore:
             }
             if variable.standard_name:
                 attrs["standard_name"] = variable.standard_name
+            if variable.group == "derived":
+                attrs["source_variables"] = list(variable.source_short_names)
+                attrs["derivation"] = "forecast-zarr-processor deterministic formula"
+            else:
+                attrs["source_grib_parameters"] = list(variable.source_short_names)
             if variable.name == "precipitation_amount":
                 attrs["cell_methods"] = "time: sum"
                 attrs["source_interval_selection"] = "latest startStep ending at valid_time"
+            if variable.name in {
+                "surface_downwelling_shortwave_flux_in_air",
+                "surface_upwelling_shortwave_flux_in_air",
+                "surface_downwelling_longwave_flux_in_air",
+                "surface_albedo",
+            }:
+                attrs["cell_methods"] = "time: mean"
+                attrs["source_time_statistic"] = "interval average"
             if variable.encoding.scale_factor is not None:
                 attrs["scale_factor"] = variable.encoding.scale_factor
                 attrs["add_offset"] = variable.encoding.add_offset

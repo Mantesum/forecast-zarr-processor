@@ -12,9 +12,17 @@ from forecast_zarr.errors import InputContractError, UnsupportedGridError
 from forecast_zarr.grib import EccodesReader, GribReader
 from forecast_zarr.hashing import sha256_json
 from forecast_zarr.manifest import load_source_manifest
-from forecast_zarr.models import GridInventory, InspectionReport, MessageMeta, VariableInventory
+from forecast_zarr.models import (
+    ExpectedSourceField,
+    GridInventory,
+    InspectionReport,
+    MessageMeta,
+    VariableInventory,
+)
 from forecast_zarr.normalization import (
+    DERIVED_DEPENDENCIES,
     SPECS_BY_NAME,
+    VariableSpec,
     accepts_step_type,
     match_variable,
     normalize_values,
@@ -26,7 +34,7 @@ def selected_message_keys(messages: tuple[MessageMeta, ...]) -> frozenset[str]:
     """Select one semantically preferred message per file, variable, and valid time."""
     grouped: dict[tuple[str, str, object], list[MessageMeta]] = defaultdict(list)
     for meta in messages:
-        spec = match_variable(meta.short_name, meta.type_of_level, meta.level)
+        spec = match_message(meta)
         if spec is None or not accepts_step_type(spec, meta.step_type):
             continue
         grouped[(meta.file_name, spec.name, meta.valid_time)].append(meta)
@@ -80,6 +88,39 @@ def _latitude_mask(
     return selected
 
 
+def match_message(meta: MessageMeta) -> VariableSpec | None:
+    return match_variable(
+        meta.short_name,
+        meta.type_of_level,
+        meta.level,
+        meta.discipline,
+        meta.parameter_category,
+        meta.parameter_number,
+    )
+
+
+def _matches_expected_field(expected: ExpectedSourceField, observed: MessageMeta) -> bool:
+    try:
+        level_matches = bool(np.isclose(float(expected.level), observed.level))
+    except ValueError:
+        level_matches = expected.level == f"{observed.level:g}"
+    return bool(
+        expected.short_name == observed.short_name
+        and expected.type_of_level == observed.type_of_level
+        and level_matches
+        and (expected.step_type is None or expected.step_type == observed.step_type)
+        and (expected.discipline is None or expected.discipline == observed.discipline)
+        and (
+            expected.parameter_category is None
+            or expected.parameter_category == observed.parameter_category
+        )
+        and (
+            expected.parameter_number is None
+            or expected.parameter_number == observed.parameter_number
+        )
+    )
+
+
 def inspect_run(
     config: ProcessorConfig,
     *,
@@ -92,6 +133,7 @@ def inspect_run(
     messages = []
     unknown: list[str] = []
     observed_by_file: dict[str, set[str]] = defaultdict(set)
+    messages_by_file: dict[str, list[MessageMeta]] = defaultdict(list)
     steps_by_file: dict[str, set[int]] = defaultdict(set)
     latitudes: set[float] = set()
     longitudes: set[float] = set()
@@ -115,11 +157,14 @@ def inspect_run(
                     f"{meta.forecast_step} != {source_file.forecast_step}"
                 )
             messages.append(meta)
+            messages_by_file[source_file.name].append(meta)
             observed_by_file[source_file.name].add(meta.short_name)
             steps_by_file[source_file.name].add(meta.forecast_step)
-            spec = match_variable(meta.short_name, meta.type_of_level, meta.level)
+            spec = match_message(meta)
             if spec is None:
-                unknown.append(meta.identity)
+                unknown.append(
+                    f"{meta.short_name}:{meta.type_of_level}:{meta.level:g}:{meta.step_type}"
+                )
                 continue
             if not accepts_step_type(spec, meta.step_type):
                 continue
@@ -143,6 +188,23 @@ def inspect_run(
             raise InputContractError(
                 f"{source_file.name} is missing manifest parameters: {sorted(absent)}"
             )
+        exact_expected = manifest.expected_fields(source_file.name)
+        absent_fields = tuple(
+            field
+            for field in exact_expected
+            if not any(
+                _matches_expected_field(field, observed)
+                for observed in messages_by_file[source_file.name]
+            )
+        )
+        if absent_fields:
+            labels = [
+                f"{field.short_name}@{field.type_of_level}:{field.level}/{field.step_type}"
+                for field in absent_fields
+            ]
+            raise InputContractError(
+                f"{source_file.name} is missing manifest fields: {sorted(labels)}"
+            )
         if steps_by_file[source_file.name] != {source_file.forecast_step}:
             raise InputContractError(f"mixed or missing forecast steps in {source_file.name}")
 
@@ -156,7 +218,7 @@ def inspect_run(
     for meta in messages:
         if meta.source_key not in selected:
             continue
-        spec = match_variable(meta.short_name, meta.type_of_level, meta.level)
+        spec = match_message(meta)
         assert spec is not None
         item = aggregates.setdefault(
             spec.name,
@@ -201,7 +263,7 @@ def inspect_run(
         for name, item in sorted(aggregates.items())
     )
     available = {item.name for item in inventory}
-    direct_requested = {name for name in config.variables if not name.startswith("wind_speed_")}
+    direct_requested = {name for name in config.variables if name not in DERIVED_DEPENDENCIES}
     missing = tuple(sorted(direct_requested - available))
     input_hash = sha256_json(
         {

@@ -43,6 +43,20 @@ class SourceFile(BaseModel):
         return value.lower()
 
 
+class ExpectedSourceField(BaseModel):
+    """Exact field identity embedded by forecast-ingest schema 1.1."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    short_name: str
+    type_of_level: str
+    level: str
+    step_type: str | None = None
+    discipline: int | None = None
+    parameter_category: int | None = None
+    parameter_number: int | None = None
+
+
 class SourceManifest(BaseModel):
     """Actual public forecast-ingest handoff document."""
 
@@ -94,6 +108,20 @@ class SourceManifest(BaseModel):
                     return frozenset(str(value) for value in values)
         return frozenset()
 
+    def expected_fields(self, name: str) -> tuple[ExpectedSourceField, ...]:
+        """Read exact per-file field identities embedded in schema 1.1 plans."""
+        raw_files = self.applied_plan.get("files", [])
+        if not isinstance(raw_files, list):
+            return ()
+        for raw in raw_files:
+            if not isinstance(raw, dict) or raw.get("name") != name:
+                continue
+            values = raw.get("expected_fields", [])
+            if not isinstance(values, (list, tuple)):
+                return ()
+            return tuple(ExpectedSourceField.model_validate(value) for value in values)
+        return ()
+
 
 class MessageMeta(BaseModel):
     """Small ecCodes-derived description of one GRIB message."""
@@ -112,6 +140,9 @@ class MessageMeta(BaseModel):
     step_type: str = "instant"
     start_step: int = Field(default=0, ge=0)
     end_step: int = Field(default=0, ge=0)
+    discipline: int | None = None
+    parameter_category: int | None = None
+    parameter_number: int | None = None
     grid_type: str
     ni: int = Field(gt=0)
     nj: int = Field(gt=0)
@@ -207,7 +238,8 @@ class VariablePlan(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str
-    group: Literal["surface", "derived"]
+    required: bool = False
+    group: Literal["surface", "height_80m", "height_100m", "atmosphere", "derived"]
     units: str
     standard_name: str | None
     long_name: str

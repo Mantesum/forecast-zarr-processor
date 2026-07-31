@@ -80,7 +80,7 @@ def run_convert(config: ProcessorConfig, *, reader: GribReader | None = None) ->
     )
     actual_size = 0
     processing_manifest: dict[str, Any] = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "dataset_id": plan.dataset_id,
         "input_manifest": "provenance/source-manifest.json",
         "input_manifest_sha256": report.manifest_hash,

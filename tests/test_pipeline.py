@@ -6,9 +6,16 @@ from pathlib import Path
 import numpy as np
 import zarr
 
+from forecast_zarr.conversion import _calculate_derived
 from forecast_zarr.pipeline import run_convert
 from forecast_zarr.validation import validate_structure
-from tests.helpers import decoded_message, processor_config, real_grib_source_run, source_run
+from tests.helpers import (
+    decoded_message,
+    energy_source_run,
+    processor_config,
+    real_grib_source_run,
+    source_run,
+)
 
 
 def test_end_to_end_writes_ready_zarr_v3_and_is_idempotent(tmp_path: Path) -> None:
@@ -134,3 +141,65 @@ def test_real_eccodes_grib_round_trip(tmp_path: Path) -> None:
     assert ready["software_versions"]["eccodes"]
     assert ready["status"] == "ready"
     assert validate_structure(output, require_ready=True)["zarr_format"] == 3
+
+
+def test_energy_fields_and_derived_wind_are_written_to_separate_groups(tmp_path: Path) -> None:
+    run_dir, reader = energy_source_run(tmp_path)
+    variables = (
+        "eastward_wind_10m",
+        "northward_wind_10m",
+        "eastward_wind_80m",
+        "northward_wind_80m",
+        "eastward_wind_100m",
+        "northward_wind_100m",
+        "air_temperature_80m",
+        "air_temperature_100m",
+        "specific_humidity_80m",
+        "air_pressure_80m",
+        "atmosphere_boundary_layer_thickness",
+        "wind_speed_80m",
+        "wind_from_direction_100m",
+        "relative_humidity_80m",
+        "air_density_80m",
+        "wind_shear_exponent_10m_100m",
+        "wind_power_density_100m",
+    )
+    config = processor_config(tmp_path, run_dir).model_copy(
+        update={"variables": variables, "required_variables": variables}
+    )
+
+    output = run_convert(config, reader=reader)
+    root = zarr.open_group(output, mode="r", zarr_format=3)
+
+    assert "eastward_wind_80m" in root["height_80m"]
+    assert "air_temperature_100m" in root["height_100m"]
+    assert "atmosphere_boundary_layer_thickness" in root["atmosphere"]
+    for name in (
+        "wind_speed_80m",
+        "wind_from_direction_100m",
+        "relative_humidity_80m",
+        "air_density_80m",
+        "wind_shear_exponent_10m_100m",
+        "wind_power_density_100m",
+    ):
+        assert np.isfinite(np.asarray(root["derived"][name][:])).all()
+
+
+def test_derived_formula_semantics() -> None:
+    east = np.asarray([[1.0]], dtype=np.float64)
+    north = np.asarray([[0.0]], dtype=np.float64)
+    direction = _calculate_derived(
+        "wind_from_direction_10m",
+        {"eastward_wind_10m": east, "northward_wind_10m": north},
+    )
+    assert direction.item() == 270
+
+    thermodynamics = {
+        "air_temperature_80m": np.asarray([[280.0]]),
+        "specific_humidity_80m": np.asarray([[0.006]]),
+        "air_pressure_80m": np.asarray([[99_000.0]]),
+    }
+    humidity = _calculate_derived("relative_humidity_80m", thermodynamics)
+    density = _calculate_derived("air_density_80m", thermodynamics)
+    assert 90 < humidity.item() < 100
+    assert 1.1 < density.item() < 1.4

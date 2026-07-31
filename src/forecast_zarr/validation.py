@@ -13,12 +13,11 @@ import zarr
 from forecast_zarr.config import ProcessorConfig
 from forecast_zarr.errors import ValidationError
 from forecast_zarr.grib import EccodesReader, GribReader
-from forecast_zarr.inspection import selected_message_keys
+from forecast_zarr.inspection import match_message, selected_message_keys
 from forecast_zarr.models import InspectionReport, ProcessingPlan
 from forecast_zarr.normalization import (
     SPECS_BY_NAME,
     decode_values,
-    match_variable,
     normalize_values,
     regular_grid,
 )
@@ -91,9 +90,11 @@ def validate_structure(
                 stored = np.asarray(array[index, :, :])
                 physical = decode_values(stored, variable.encoding)
                 if np.isnan(physical).all():
-                    raise ValidationError(
-                        f"{variable.name} is entirely missing at {time.isoformat()}"
-                    )
+                    if variable.required:
+                        raise ValidationError(
+                            f"{variable.name} is entirely missing at {time.isoformat()}"
+                        )
+                    continue
                 spec = SPECS_BY_NAME[variable.name]
                 if spec.valid_range is not None:
                     finite = physical[np.isfinite(physical)]
@@ -131,7 +132,7 @@ def validate_round_trip(
     root = zarr.open_group(store=path, mode="r", zarr_format=3)
     latitude = np.asarray(plan.grid.latitude, dtype=np.float64)
     longitude = np.asarray(plan.grid.longitude, dtype=np.float64)
-    direct = {item.name: item for item in plan.variables if item.group == "surface"}
+    direct = {item.name: item for item in plan.variables if item.group != "derived"}
     rng = random.Random(config.validation.random_seed)
     point_checks = 0
     bbox_checks = 0
@@ -141,9 +142,7 @@ def validate_round_trip(
         for decoded in decoder.iter_file(report.input_dir / source_file.name):
             if decoded.meta.source_key not in selected:
                 continue
-            spec = match_variable(
-                decoded.meta.short_name, decoded.meta.type_of_level, decoded.meta.level
-            )
+            spec = match_message(decoded.meta)
             if spec is None:
                 continue
             variable = direct.get(spec.name)

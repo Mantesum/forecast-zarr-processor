@@ -6,17 +6,18 @@ import shutil
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 
 from forecast_zarr.config import ProcessorConfig
 from forecast_zarr.errors import BudgetExceededError, InputContractError
 from forecast_zarr.grib import EccodesReader, GribReader
-from forecast_zarr.inspection import selected_message_keys
+from forecast_zarr.inspection import match_message, selected_message_keys
 from forecast_zarr.io import directory_size, read_json, write_json_atomic
 from forecast_zarr.models import InspectionReport, ProcessingPlan
 from forecast_zarr.normalization import (
+    DERIVED_DEPENDENCIES,
     decode_values,
     encode_values,
-    match_variable,
     normalize_values,
     regular_grid,
 )
@@ -78,7 +79,7 @@ def convert_messages(
         store = ForecastStore.create(plan.staging_path, plan, report, config)
         processed = set()
         _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
-    plans = {item.name: item for item in plan.variables if item.group == "surface"}
+    plans = {item.name: item for item in plan.variables if item.group != "derived"}
     selected = selected_message_keys(report.messages)
     message_counter = 0
     for source_file in report.source_files:
@@ -90,9 +91,7 @@ def convert_messages(
                 processed.add(key)
                 _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
                 continue
-            spec = match_variable(
-                decoded.meta.short_name, decoded.meta.type_of_level, decoded.meta.level
-            )
+            spec = match_message(decoded.meta)
             if spec is None:
                 processed.add(key)
                 _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
@@ -121,18 +120,65 @@ def convert_messages(
 def _write_derived(store: ForecastStore, plan: ProcessingPlan, processed: set[str]) -> None:
     by_name = {item.name: item for item in plan.variables}
     for variable in plan.variables:
-        if not variable.name.startswith("wind_speed_"):
+        dependencies = DERIVED_DEPENDENCIES.get(variable.name)
+        if dependencies is None:
             continue
-        height = variable.name.removeprefix("wind_speed_").removesuffix("m")
-        u_plan = by_name[f"eastward_wind_{height}m"]
-        v_plan = by_name[f"northward_wind_{height}m"]
         output = store.array(variable)
         for index, valid_time in enumerate(plan.valid_times):
             key = f"derived:{variable.name}:{valid_time.isoformat()}"
             if key in processed:
                 continue
-            u = decode_values(np.asarray(store.array(u_plan)[index, :, :]), u_plan.encoding)
-            v = decode_values(np.asarray(store.array(v_plan)[index, :, :]), v_plan.encoding)
-            speed = np.hypot(u, v)
-            output[index, :, :] = encode_values(speed, variable.encoding)
+            components = {
+                name: decode_values(
+                    np.asarray(store.array(by_name[name])[index, :, :]),
+                    by_name[name].encoding,
+                )
+                for name in dependencies
+            }
+            values = _calculate_derived(variable.name, components)
+            output[index, :, :] = encode_values(values, variable.encoding)
             processed.add(key)
+
+
+def _calculate_derived(
+    name: str,
+    values: dict[str, npt.NDArray[np.float64]],
+) -> npt.NDArray[np.float64]:
+    if name.startswith("wind_speed_"):
+        height = name.removeprefix("wind_speed_")
+        return np.hypot(values[f"eastward_wind_{height}"], values[f"northward_wind_{height}"])
+    if name.startswith("wind_from_direction_"):
+        height = name.removeprefix("wind_from_direction_")
+        u = values[f"eastward_wind_{height}"]
+        v = values[f"northward_wind_{height}"]
+        direction = (270 - np.degrees(np.arctan2(v, u))) % 360
+        return np.where(np.hypot(u, v) > 1e-9, direction, np.nan)
+    if name in {"relative_humidity_80m", "air_density_80m"}:
+        temperature = values["air_temperature_80m"]
+        specific_humidity = values["specific_humidity_80m"]
+        pressure = values["air_pressure_80m"]
+        if name == "air_density_80m":
+            virtual_temperature = temperature * (1 + 0.61 * specific_humidity)
+            return pressure / (287.05 * virtual_temperature)
+        epsilon = 0.622
+        vapor_pressure = (
+            specific_humidity * pressure / (epsilon + (1 - epsilon) * specific_humidity)
+        )
+        celsius = temperature - 273.15
+        saturation_pressure = 611.2 * np.exp(17.67 * celsius / (celsius + 243.5))
+        return 100 * vapor_pressure / saturation_pressure
+    if name == "wind_shear_exponent_10m_100m":
+        speed_10m = np.hypot(values["eastward_wind_10m"], values["northward_wind_10m"])
+        speed_100m = np.hypot(values["eastward_wind_100m"], values["northward_wind_100m"])
+        valid = (speed_10m > 0.1) & (speed_100m > 0.1)
+        result = np.full(speed_10m.shape, np.nan, dtype=np.float64)
+        result[valid] = np.log(speed_100m[valid] / speed_10m[valid]) / np.log(10)
+        return result
+    if name == "wind_power_density_100m":
+        speed = np.hypot(values["eastward_wind_100m"], values["northward_wind_100m"])
+        virtual_temperature = values["air_temperature_80m"] * (
+            1 + 0.61 * values["specific_humidity_80m"]
+        )
+        density = values["air_pressure_80m"] / (287.05 * virtual_temperature)
+        return np.asarray(0.5 * density * speed**3, dtype=np.float64)
+    raise InputContractError(f"unknown derived variable: {name}")

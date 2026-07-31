@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "forecast-zarr-processor"
-version = "0.1.0"
-description = "Budget-aware streaming conversion of forecast GRIB2 runs into immutable Zarr v3 stores"
+version = "0.2.0"
+description = "Convert weather, wind-energy, and solar-energy forecast GRIB2 runs to validated Zarr v3 stores"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
-authors = [{ name = "ProjectEOL contributors" }]
-keywords = ["weather", "grib", "zarr", "eccodes", "forecast"]
+authors = [{ name = "Vyacheslav Semenov", email = "mantesum@projecteol.ru" }]
+keywords = ["weather", "grib", "zarr", "eccodes", "forecast", "wind-energy", "solar-energy"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: Apache Software License",

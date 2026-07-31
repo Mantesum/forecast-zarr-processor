@@ -1,35 +1,66 @@
 # Ubuntu deployment
 
-These are operator instructions only; the project does not change a host automatically.
+These instructions do not modify the host automatically.
 
-## Prerequisites
+## Install
 
-Install Python 3.12+ and `uv`. The locked Python environment installs the official ECMWF `eccodeslib` binary package (ecCodes 2.42+) on Linux. A separately managed system ecCodes installation is optional; if your organization requires one, confirm that it is version 2.42 or newer and configure the ecCodes library search explicitly.
-
-```bash
-uv --version
-```
-
-Clone the repository into `/opt/forecast-zarr-processor`, create `/srv/forecast-data`, and install locked dependencies:
+Install Python 3.12+ and `uv`, then clone and prepare the locked environment:
 
 ```bash
-cd /opt/forecast-zarr-processor
+git clone https://github.com/Mantesum/forecast-zarr-processor.git
+cd forecast-zarr-processor
 uv sync --frozen
 uv run python -m eccodes selfcheck
-install -d -m 0750 /srv/forecast-data/zarr /srv/forecast-data/logs
+sudo install -d -o "$USER" -g "$USER" -m 0750 /srv/forecast-data/zarr /srv/forecast-data/logs
 ```
 
-Copy and edit a configuration under `/etc/forecast-zarr/`. The input must point at a complete forecast-ingest run. Test `inspect`, `plan`, and one foreground `convert` before enabling scheduling.
+The Linux environment installs the ECMWF `eccodeslib` binary package. A separately managed
+system ecCodes installation is optional.
+
+## Configure one run
+
+Copy the configuration corresponding to the ingest profile. If you download the combined
+bundle, use:
+
+```bash
+cp configs/gfs-global-full-energy-10day.yaml configs/gfs-local-full-energy.yaml
+```
+
+Edit `input_run` in the local copy so it points at the directory containing `manifest.json`:
+
+```yaml
+input_run: /home/mantesum/forecast-ingest/data/raw/noaa-gfs/gfs/20260731T000000Z/REQUEST_HASH
+output_root: /srv/forecast-data/zarr
+```
+
+Verify the handoff before conversion:
+
+```bash
+uv run forecast-zarr inspect /home/mantesum/forecast-ingest/data/raw/noaa-gfs/gfs/20260731T000000Z/REQUEST_HASH
+uv run forecast-zarr plan --config configs/gfs-local-full-energy.yaml
+uv run forecast-zarr convert --config configs/gfs-local-full-energy.yaml
+uv run forecast-zarr status --root /srv/forecast-data/zarr
+```
+
+The final `convert` output prints the published store path. Validate that exact path with
+`forecast-zarr validate`.
 
 ## systemd
 
-Copy the unit files from `systemd/`, create `/etc/forecast-zarr/forecast-zarr.env`, and adjust `User`, paths, and the configuration selection for your host. Then:
+The files in `systemd/` are examples. Copy the service, timer, chosen YAML, and optional
+environment file into `/etc`, then adjust `User`, paths, resource limits, and configuration:
 
 ```bash
+sudo cp systemd/forecast-zarr.service systemd/forecast-zarr.timer /etc/systemd/system/
+sudo install -d -m 0755 /etc/forecast-zarr
+sudo cp configs/gfs-global-full-energy-10day.yaml /etc/forecast-zarr/
 sudo systemctl daemon-reload
 sudo systemctl enable --now forecast-zarr.timer
 systemctl status forecast-zarr.timer
 journalctl -u forecast-zarr.service
 ```
 
-The example service is hardened, runs at most one conversion, and treats JSON stderr as journal data. A production scheduler must update the selected `input_run` after forecast-ingest publishes a new manifest. The timer alone does not discover a "latest" directory.
+The example service is hardened and permits one conversion at a time. Its timer does not
+discover new ingest runs or rewrite `input_run`; production orchestration must select each
+new immutable run after ingest finishes. This can later be replaced by a small handoff script
+that receives the manifest path, runs plan/convert/validate, and only then triggers retention.

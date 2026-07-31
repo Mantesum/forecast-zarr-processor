@@ -1,5 +1,4 @@
-# Process one complete output directory produced by forecast-ingest.
-input_run: ../data/raw/noaa-gfs/gfs/20250101T000000Z/replace-with-request-hash
+input_run: ../data/raw/noaa-gfs/gfs/replace-with-run/replace-with-request-hash
 output_root: ../data/zarr
 encoding: api_compact
 longitude_convention: "-180_180"
@@ -7,21 +6,30 @@ crop_to_manifest_regions: true
 resume: true
 compression_level: 7
 variables:
+  - surface_downwelling_shortwave_flux_in_air
+  - surface_upwelling_shortwave_flux_in_air
+  - surface_downwelling_longwave_flux_in_air
+  - cloud_area_fraction
+  - low_cloud_area_fraction
+  - medium_cloud_area_fraction
+  - high_cloud_area_fraction
   - air_temperature_2m
-  - relative_humidity_2m
-  - dew_point_temperature_2m
-  - air_pressure_at_mean_sea_level
-  - surface_air_pressure
   - eastward_wind_10m
   - northward_wind_10m
   - wind_speed_10m
   - wind_from_direction_10m
+  - relative_humidity_2m
+  - dew_point_temperature_2m
+  - surface_albedo
+  - atmosphere_mass_content_of_water_vapor
   - precipitation_amount
-  - cloud_area_fraction
-  - visibility_in_air
-  - surface_downwelling_shortwave_flux_in_air
+  - surface_snow_thickness
+  - snow_water_equivalent
+  - surface_air_pressure
   - surface_altitude
 required_variables:
+  - surface_downwelling_shortwave_flux_in_air
+  - cloud_area_fraction
   - air_temperature_2m
   - eastward_wind_10m
   - northward_wind_10m

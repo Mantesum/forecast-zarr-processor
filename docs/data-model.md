@@ -1,22 +1,65 @@
 # Data model
 
-The input is the public `forecast-ingest` schema 1.x handoff: a `complete` manifest, `validated` file entries, safe file names, byte sizes, `sha256:` checksums, forecast steps, regions, license, attribution, and an `applied_plan`. The processor additionally checks each GRIB file through ecCodes against the embedded expected short names and step.
+## Input contract
 
-The output is physical Zarr v3, not a Kerchunk or VirtualiZarr reference. Virtual datasets can be useful for an archive tier, but physical arrays make latency, compression, and read amplification predictable for a public API.
+The input is one complete `forecast-ingest` run. Manifest schema 1.0 remains supported;
+schema 1.1 is preferred because its `expected_fields` entries describe the exact parameter,
+level, height, forecast interval, step type, and native GRIB2 code where needed.
 
-## Coordinates
+The processor checks the manifest, safe file names, byte sizes, SHA-256 checksums, forecast
+steps, license, attribution, and requested field identities against the real GRIB messages.
+This prevents a similarly named field at the wrong height or with the wrong time statistic
+from silently entering the Zarr dataset.
 
-- `coordinates/valid_time`: UTC epoch seconds for all actually available forecast moments.
+## Coordinates and groups
+
+- `coordinates/valid_time`: UTC epoch seconds for all available forecast moments.
 - `coordinates/latitude`: strictly increasing degrees north.
-- `coordinates/longitude`: strictly increasing degrees east in the root's declared convention.
-- `forecast_reference_time`: recorded in root and variable attributes.
+- `coordinates/longitude`: strictly increasing degrees east in the declared convention.
+- `forecast_reference_time`: stored in root and variable attributes.
 
-Surface and derived arrays have dimensions `(valid_time, latitude, longitude)`. Missing source steps remain `_FillValue`; they are not silently interpolated. Only `regular_ll` is supported in version 0.1. A native unstructured grid fails with `unsupported_grid_type` before any final store appears.
+Data arrays use `(valid_time, latitude, longitude)`. They are grouped by physical level:
 
-## Variables and provenance
+- `surface/`: surface and near-surface weather fields;
+- `height_80m/`: wind, temperature, humidity, and pressure at 80 m above ground;
+- `height_100m/`: wind and temperature at 100 m above ground;
+- `atmosphere/`: whole-column and boundary-layer fields;
+- `derived/`: deterministic quantities calculated from stored source arrays.
 
-Names and common metadata follow CF conventions. Each array records canonical units, `standard_name` where one exists, a readable name, source GRIB short names and levels, conversion software/version, license, and attribution. Compact arrays also record their scale, offset, fill value, and maximum absolute error.
+Only regular latitude/longitude grids are supported. Missing source steps are fill values and
+are never interpolated. An optional field may be entirely missing for a time and area — for
+example snow over ocean — while a configured required field must contain usable data.
 
-`provenance/source-manifest.json` is an exact JSON copy of the handoff. `processing-manifest.json` records input hashes, source files, variables, valid times, software versions, layout, encoding, measured size, validation counts, timing, and status. `READY.json` is the compact publication marker and is written last.
+## Direct and calculated variables
 
-Accumulated ECMWF `ssrd` is not labelled as instantaneous shortwave flux. It remains unmapped in version 0.1 until tested de-accumulation across forecast intervals is available. GFS `sdswrf`, whose decoded units are flux, maps directly to `surface_downwelling_shortwave_flux_in_air`.
+Direct variables retain their source parameter, level, units, interval statistic, license,
+and attribution. Interval-average radiation and albedo are marked `time: mean`; accumulated
+precipitation is marked `time: sum`.
+
+Calculated fields use the following definitions:
+
+- wind speed: `sqrt(u^2 + v^2)`;
+- meteorological wind-from direction: `(270 - atan2(v, u) in degrees) mod 360`;
+- 80 m relative humidity: derived from specific humidity, pressure, and temperature;
+- 80 m moist-air density: calculated using virtual temperature;
+- 10-to-100 m shear exponent: `ln(V100 / V10) / ln(100 / 10)` for non-calm winds;
+- 100 m wind power density: `0.5 * rho80 * V100^3`.
+
+The density at 80 m is the closest internally consistent GFS input available for the 100 m
+power-density estimate. A downstream turbine model should still apply hub height, terrain,
+wake, availability, icing, curtailment, and the actual turbine power curve.
+
+For solar modelling, shortwave radiation is retained as a horizontal-surface forecast input.
+DNI, DHI, plane-of-array irradiance, cell temperature, and electrical power are intentionally
+left to a site-specific downstream model that knows location and PV installation geometry.
+
+## Encoding and provenance
+
+Names and metadata follow CF conventions where an applicable standard name exists.
+`api_compact` arrays record scale, offset, fill value, and maximum absolute packing error;
+unsafe ranges fall back to float32. `lossless` always stores decoded float32 values.
+
+`provenance/source-manifest.json` is the exact ingest handoff. The processing manifest schema
+1.1 records input hashes, files, variables, valid times, software versions, layouts, encoding,
+measured size, validation results, and the complete processing plan. `READY.json` is written
+last and is the publication marker.

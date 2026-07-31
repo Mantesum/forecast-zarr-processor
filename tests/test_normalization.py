@@ -8,6 +8,7 @@ from forecast_zarr.normalization import (
     compact_encoding,
     decode_values,
     encode_values,
+    match_variable,
     normalize_longitudes,
     regular_grid,
 )
@@ -35,3 +36,10 @@ def test_integer_overflow_is_never_silent() -> None:
     encoding = compact_encoding(SPECS_BY_NAME["eastward_wind_10m"], -1, 1)
     with pytest.raises(OverflowError):
         encode_values(np.asarray([1e9], dtype=np.float64), encoding)
+
+
+def test_boundary_layer_height_uses_native_grib2_identity() -> None:
+    assert match_variable("unknown", "surface", 0) is None
+    matched = match_variable("unknown", "surface", 0, 0, 3, 196)
+    assert matched is not None
+    assert matched.name == "atmosphere_boundary_layer_thickness"

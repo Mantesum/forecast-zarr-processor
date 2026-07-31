@@ -46,6 +46,9 @@ def decoded_message(
     start_step: int | None = None,
     end_step: int | None = None,
     message_index: int | None = None,
+    discipline: int | None = None,
+    parameter_category: int | None = None,
+    parameter_number: int | None = None,
 ) -> DecodedMessage:
     run = datetime(2025, 1, 1, tzinfo=UTC)
     latitude = np.repeat(np.asarray([50.0, 50.25, 50.5]), 4)
@@ -69,6 +72,9 @@ def decoded_message(
             step_type=step_type,
             start_step=step if start_step is None else start_step,
             end_step=step if end_step is None else end_step,
+            discipline=discipline,
+            parameter_category=parameter_category,
+            parameter_number=parameter_number,
             grid_type="regular_ll",
             ni=4,
             nj=3,
@@ -140,6 +146,55 @@ def source_run(tmp_path: Path) -> tuple[Path, FakeReader]:
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return run_dir, FakeReader(messages)
+
+
+def energy_source_run(tmp_path: Path) -> tuple[Path, FakeReader]:
+    """Extend the basic fake run with representative 80/100 m energy fields."""
+    run_dir, reader = source_run(tmp_path)
+    for messages in reader.messages.values():
+        first = messages[0]
+        name = first.meta.file_name
+        step = first.meta.forecast_step
+        shape = (first.meta.nj, first.meta.ni)
+        fields = (
+            ("u", 80, "m s-1", 6.0, "heightAboveGround"),
+            ("v", 80, "m s-1", 2.0, "heightAboveGround"),
+            ("u", 100, "m s-1", 7.0, "heightAboveGround"),
+            ("v", 100, "m s-1", 3.0, "heightAboveGround"),
+            ("t", 80, "K", 280.0, "heightAboveGround"),
+            ("t", 100, "K", 279.5, "heightAboveGround"),
+            ("q", 80, "kg kg-1", 0.006, "heightAboveGround"),
+            ("pres", 80, "Pa", 99_000.0, "heightAboveGround"),
+        )
+        for index, (short_name, level, units, value, level_type) in enumerate(fields, start=3):
+            messages.append(
+                decoded_message(
+                    name,
+                    short_name,
+                    step,
+                    np.full(shape, value),
+                    level=level,
+                    units=units,
+                    type_of_level=level_type,
+                    message_index=index,
+                )
+            )
+        messages.append(
+            decoded_message(
+                name,
+                "unknown",
+                step,
+                np.full(shape, 900.0),
+                level=0,
+                units="unknown",
+                type_of_level="surface",
+                message_index=20,
+                discipline=0,
+                parameter_category=3,
+                parameter_number=196,
+            )
+        )
+    return run_dir, reader
 
 
 def processor_config(tmp_path: Path, run_dir: Path) -> ProcessorConfig:

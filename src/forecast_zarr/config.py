@@ -58,24 +58,91 @@ class ValidationConfig(BaseModel):
     bbox_samples: int = Field(default=4, ge=1, le=100)
 
 
-DEFAULT_VARIABLES = (
+WEATHER_VARIABLES = (
     "air_temperature_2m",
     "relative_humidity_2m",
     "dew_point_temperature_2m",
     "air_pressure_at_mean_sea_level",
+    "surface_air_pressure",
     "eastward_wind_10m",
     "northward_wind_10m",
     "wind_speed_10m",
-    "eastward_wind_100m",
-    "northward_wind_100m",
-    "wind_speed_100m",
+    "wind_from_direction_10m",
     "precipitation_amount",
     "cloud_area_fraction",
     "visibility_in_air",
     "surface_downwelling_shortwave_flux_in_air",
     "surface_altitude",
-    "weather_code",
 )
+
+WIND_ENERGY_VARIABLES = (
+    "eastward_wind_10m",
+    "northward_wind_10m",
+    "eastward_wind_80m",
+    "northward_wind_80m",
+    "eastward_wind_100m",
+    "northward_wind_100m",
+    "air_temperature_2m",
+    "air_temperature_80m",
+    "air_temperature_100m",
+    "specific_humidity_80m",
+    "air_pressure_80m",
+    "surface_air_pressure",
+    "air_pressure_at_mean_sea_level",
+    "wind_speed_of_gust",
+    "atmosphere_boundary_layer_thickness",
+    "friction_velocity",
+    "surface_roughness_length",
+    "precipitation_amount",
+    "surface_altitude",
+    "wind_speed_10m",
+    "wind_speed_80m",
+    "wind_speed_100m",
+    "wind_from_direction_10m",
+    "wind_from_direction_80m",
+    "wind_from_direction_100m",
+    "relative_humidity_80m",
+    "air_density_80m",
+    "wind_shear_exponent_10m_100m",
+    "wind_power_density_100m",
+)
+
+SOLAR_ENERGY_VARIABLES = (
+    "surface_downwelling_shortwave_flux_in_air",
+    "surface_upwelling_shortwave_flux_in_air",
+    "surface_downwelling_longwave_flux_in_air",
+    "cloud_area_fraction",
+    "low_cloud_area_fraction",
+    "medium_cloud_area_fraction",
+    "high_cloud_area_fraction",
+    "air_temperature_2m",
+    "eastward_wind_10m",
+    "northward_wind_10m",
+    "wind_speed_10m",
+    "wind_from_direction_10m",
+    "relative_humidity_2m",
+    "dew_point_temperature_2m",
+    "surface_albedo",
+    "atmosphere_mass_content_of_water_vapor",
+    "precipitation_amount",
+    "surface_snow_thickness",
+    "snow_water_equivalent",
+    "surface_air_pressure",
+    "surface_altitude",
+)
+
+FULL_ENERGY_VARIABLES = tuple(
+    dict.fromkeys((*WEATHER_VARIABLES, *WIND_ENERGY_VARIABLES, *SOLAR_ENERGY_VARIABLES))
+)
+
+VARIABLE_PROFILES = {
+    "weather": WEATHER_VARIABLES,
+    "wind_energy": WIND_ENERGY_VARIABLES,
+    "solar_energy": SOLAR_ENERGY_VARIABLES,
+    "full_energy": FULL_ENERGY_VARIABLES,
+}
+
+DEFAULT_VARIABLES = WEATHER_VARIABLES
 
 
 class ProcessorConfig(BaseModel):

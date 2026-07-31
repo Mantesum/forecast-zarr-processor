@@ -9,7 +9,7 @@ from typing import Annotated
 import typer
 
 from forecast_zarr.benchmark import benchmark_json, load_benchmark_config
-from forecast_zarr.config import ProcessorConfig, load_config
+from forecast_zarr.config import VARIABLE_PROFILES, ProcessorConfig, load_config
 from forecast_zarr.errors import ProcessorError
 from forecast_zarr.inspection import inspect_run
 from forecast_zarr.io import read_json
@@ -52,6 +52,17 @@ def inspect(
         typer.echo(report.model_dump_json(indent=2))
     except ProcessorError as error:
         _fail(error)
+
+
+@app.command()
+def profiles() -> None:
+    """List the ready-made weather and energy variable bundles."""
+    typer.echo(
+        json.dumps(
+            {name: list(variables) for name, variables in VARIABLE_PROFILES.items()},
+            indent=2,
+        )
+    )
 
 
 @app.command()

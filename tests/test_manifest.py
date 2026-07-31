@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 
 from forecast_zarr.errors import InputContractError
+from forecast_zarr.inspection import inspect_run
 from forecast_zarr.manifest import load_source_manifest
-from tests.helpers import source_run
+from tests.helpers import processor_config, source_run
 
 
 def test_actual_forecast_ingest_contract_loads(tmp_path: Path) -> None:
@@ -42,3 +43,22 @@ def test_unknown_schema_is_rejected(tmp_path: Path) -> None:
     path.write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(InputContractError, match="unsupported manifest"):
         load_source_manifest(run_dir)
+
+
+def test_schema_1_1_exact_field_mismatch_is_rejected(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    path = run_dir / "manifest.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["schema_version"] = "1.1"
+    document["applied_plan"]["files"][0]["expected_fields"] = [
+        {
+            "short_name": "2t",
+            "type_of_level": "heightAboveGround",
+            "level": "100",
+            "step_type": "instant",
+        }
+    ]
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(InputContractError, match="missing manifest fields"):
+        inspect_run(processor_config(tmp_path, run_dir), reader=reader)

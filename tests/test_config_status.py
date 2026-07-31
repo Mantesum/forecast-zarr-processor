@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from forecast_zarr.config import load_config
+from forecast_zarr.config import FULL_ENERGY_VARIABLES, load_config
 from forecast_zarr.status import status_report
 
 
@@ -21,6 +21,19 @@ def test_distributed_processor_configs_load() -> None:
     for name in ("gfs-projecteol.yaml", "aifs-global-light.yaml", "renewable-energy.yaml"):
         config = load_config(config_dir / name)
         assert config.longitude_convention == "-180_180"
+
+
+def test_global_energy_configs_load() -> None:
+    config_dir = Path(__file__).parents[1] / "configs"
+    names = (
+        "gfs-global-weather-10day.yaml",
+        "gfs-global-wind-energy-10day.yaml",
+        "gfs-global-solar-energy-10day.yaml",
+        "gfs-global-full-energy-10day.yaml",
+    )
+    loaded = {name: load_config(config_dir / name) for name in names}
+    assert loaded[names[-1]].variables == FULL_ENERGY_VARIABLES
+    assert all(config.longitude_convention == "-180_180" for config in loaded.values())
 
 
 def test_empty_status_is_healthy(tmp_path: Path) -> None:

@@ -112,6 +112,9 @@ class EccodesReader:
             step_type=str(self._get(message_id, "stepType", "instant")),
             start_step=max(0, int(self._get(message_id, "startStep", 0))),
             end_step=max(0, int(self._get(message_id, "endStep", 0))),
+            discipline=_optional_int(self._get(message_id, "discipline")),
+            parameter_category=_optional_int(self._get(message_id, "parameterCategory")),
+            parameter_number=_optional_int(self._get(message_id, "parameterNumber")),
             grid_type=grid_type,
             ni=int(self._get(message_id, "Ni", 0)),
             nj=int(self._get(message_id, "Nj", 0)),
@@ -119,3 +122,10 @@ class EccodesReader:
             maximum=float(finite.max()) if finite.size else None,
         )
         return DecodedMessage(meta, latitudes, longitudes, values)
+
+
+def _optional_int(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None

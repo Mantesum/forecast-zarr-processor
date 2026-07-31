@@ -1,7 +1,7 @@
 [Unit]
 Description=Convert a complete forecast GRIB run to Zarr v3
 After=local-fs.target
-ConditionPathExists=/etc/forecast-zarr/gfs-projecteol.yaml
+ConditionPathExists=/etc/forecast-zarr/gfs-global-full-energy-10day.yaml
 
 [Service]
 Type=oneshot
@@ -9,7 +9,7 @@ User=forecast
 Group=forecast
 WorkingDirectory=/opt/forecast-zarr-processor
 EnvironmentFile=-/etc/forecast-zarr/forecast-zarr.env
-ExecStart=/opt/forecast-zarr-processor/.venv/bin/forecast-zarr convert --config /etc/forecast-zarr/gfs-projecteol.yaml
+ExecStart=/opt/forecast-zarr-processor/.venv/bin/forecast-zarr convert --config /etc/forecast-zarr/gfs-global-full-energy-10day.yaml
 Nice=5
 IOSchedulingClass=best-effort
 IOSchedulingPriority=6
@@ -21,4 +21,3 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/srv/forecast-data
 TimeoutStartSec=6h
-

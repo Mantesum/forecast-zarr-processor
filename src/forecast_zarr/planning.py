@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from forecast_zarr.config import EncodingMode, ProcessorConfig
 from forecast_zarr.errors import BudgetExceededError, InputContractError
@@ -19,7 +19,7 @@ from forecast_zarr.models import (
     VariableInventory,
     VariablePlan,
 )
-from forecast_zarr.normalization import SPECS_BY_NAME, compact_encoding
+from forecast_zarr.normalization import DERIVED_DEPENDENCIES, SPECS_BY_NAME, compact_encoding
 
 GIB = 1024**3
 
@@ -60,33 +60,37 @@ def _encoding(mode: EncodingMode, inventory: VariableInventory | None, name: str
 
 
 def _derived_inventory(
-    name: str, by_name: dict[str, VariableInventory]
+    name: str,
+    by_name: dict[str, VariableInventory],
+    selected_names: set[str],
 ) -> tuple[tuple[datetime, ...], tuple[str, ...], tuple[str, ...]] | None:
-    height = name.removeprefix("wind_speed_").removesuffix("m")
-    u_name = f"eastward_wind_{height}m"
-    v_name = f"northward_wind_{height}m"
-    if u_name not in by_name or v_name not in by_name:
+    dependencies = DERIVED_DEPENDENCIES.get(name)
+    if dependencies is None or not set(dependencies).issubset(by_name):
         return None
-    times = tuple(sorted(set(by_name[u_name].valid_times) & set(by_name[v_name].valid_times)))
+    if not set(dependencies).issubset(selected_names):
+        return None
+    common_times = set(by_name[dependencies[0]].valid_times)
+    for dependency in dependencies[1:]:
+        common_times &= set(by_name[dependency].valid_times)
     return (
-        times,
-        (u_name, v_name),
-        (
-            *by_name[u_name].source_levels,
-            *by_name[v_name].source_levels,
-        ),
+        tuple(sorted(common_times)),
+        dependencies,
+        tuple(level for dependency in dependencies for level in by_name[dependency].source_levels),
     )
 
 
 def create_plan(config: ProcessorConfig, report: InspectionReport) -> ProcessingPlan:
     """Choose arrays/layouts and reject unsafe disk or memory projections."""
     by_name = {item.name: item for item in report.variables}
+    selected_names = set(config.variables)
     required_missing = set(config.required_variables) & set(report.missing_variables)
-    for required_derived in set(config.required_variables) & {
-        "wind_speed_10m",
-        "wind_speed_100m",
-    }:
-        if _derived_inventory(required_derived, by_name) is None:
+    required_missing.update(
+        name
+        for name in set(config.required_variables) & set(by_name)
+        if by_name[name].minimum is None and by_name[name].maximum is None
+    )
+    for required_derived in set(config.required_variables) & set(DERIVED_DEPENDENCIES):
+        if _derived_inventory(required_derived, by_name, selected_names) is None:
             required_missing.add(required_derived)
     if required_missing:
         raise InputContractError(f"required variables are missing: {sorted(required_missing)}")
@@ -101,11 +105,11 @@ def create_plan(config: ProcessorConfig, report: InspectionReport) -> Processing
             warnings.append(f"unknown selected variable skipped: {name}")
             continue
         item = by_name.get(name)
-        group: Literal["surface", "derived"] = "surface"
+        group = spec.group
         source_names: tuple[str, ...]
         source_levels: tuple[str, ...]
-        if name.startswith("wind_speed_"):
-            derived_info = _derived_inventory(name, by_name)
+        if name in DERIVED_DEPENDENCIES:
+            derived_info = _derived_inventory(name, by_name, selected_names)
             if derived_info is None:
                 warnings.append(f"derived variable skipped because components are missing: {name}")
                 continue
@@ -131,6 +135,7 @@ def create_plan(config: ProcessorConfig, report: InspectionReport) -> Processing
         variables.append(
             VariablePlan(
                 name=name,
+                required=name in config.required_variables,
                 group=group,
                 units=spec.units,
                 standard_name=spec.standard_name,
@@ -181,7 +186,7 @@ def create_plan(config: ProcessorConfig, report: InspectionReport) -> Processing
         "crop_to_manifest_regions": config.crop_to_manifest_regions,
         "chunking": config.chunking.model_dump(mode="json"),
         "compression_level": config.compression_level,
-        "processor_schema": "1.2",
+        "processor_schema": "1.3",
     }
     dataset_id = sha256_json(identity)[:24]
     run = report.run_utc.strftime("%Y%m%dT%H%M%SZ")

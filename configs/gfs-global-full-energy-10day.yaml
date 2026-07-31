@@ -1,4 +1,3 @@
-# Backward-compatible name for the complete weather + wind + solar bundle.
 input_run: ../data/raw/noaa-gfs/gfs/replace-with-run/replace-with-request-hash
 output_root: ../data/zarr
 encoding: api_compact
