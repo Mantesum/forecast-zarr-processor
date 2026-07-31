@@ -140,6 +140,9 @@ class ForecastStore:
             }
             if variable.standard_name:
                 attrs["standard_name"] = variable.standard_name
+            if variable.name == "precipitation_amount":
+                attrs["cell_methods"] = "time: sum"
+                attrs["source_interval_selection"] = "latest startStep ending at valid_time"
             if variable.encoding.scale_factor is not None:
                 attrs["scale_factor"] = variable.encoding.scale_factor
                 attrs["add_offset"] = variable.encoding.add_offset

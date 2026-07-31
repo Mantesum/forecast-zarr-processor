@@ -145,6 +145,7 @@ SPECS: tuple[VariableSpec, ...] = (
         "Accumulated precipitation amount",
         0.01,
         (0, 1000),
+        frozenset({"accum"}),
     ),
     VariableSpec(
         "cloud_area_fraction",

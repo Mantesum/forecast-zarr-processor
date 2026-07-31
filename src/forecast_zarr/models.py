@@ -110,6 +110,8 @@ class MessageMeta(BaseModel):
     forecast_reference_time: datetime
     forecast_step: int = Field(ge=0)
     step_type: str = "instant"
+    start_step: int = Field(default=0, ge=0)
+    end_step: int = Field(default=0, ge=0)
     grid_type: str
     ni: int = Field(gt=0)
     nj: int = Field(gt=0)
@@ -122,6 +124,10 @@ class MessageMeta(BaseModel):
             f"{self.short_name}:{self.type_of_level}:{self.level:g}:"
             f"{self.step_type}:{self.valid_time.isoformat()}"
         )
+
+    @property
+    def source_key(self) -> str:
+        return f"{self.file_name}:{self.message_index}"
 
 
 class VariableInventory(BaseModel):

@@ -110,6 +110,8 @@ class EccodesReader:
             forecast_reference_time=reference,
             forecast_step=max(0, round((valid - reference).total_seconds() / 3600)),
             step_type=str(self._get(message_id, "stepType", "instant")),
+            start_step=max(0, int(self._get(message_id, "startStep", 0))),
+            end_step=max(0, int(self._get(message_id, "endStep", 0))),
             grid_type=grid_type,
             ni=int(self._get(message_id, "Ni", 0)),
             nj=int(self._get(message_id, "Nj", 0)),

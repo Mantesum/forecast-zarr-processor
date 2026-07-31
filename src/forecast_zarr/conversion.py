@@ -10,10 +10,10 @@ import numpy as np
 from forecast_zarr.config import ProcessorConfig
 from forecast_zarr.errors import BudgetExceededError, InputContractError
 from forecast_zarr.grib import EccodesReader, GribReader
+from forecast_zarr.inspection import selected_message_keys
 from forecast_zarr.io import directory_size, read_json, write_json_atomic
 from forecast_zarr.models import InspectionReport, ProcessingPlan
 from forecast_zarr.normalization import (
-    accepts_step_type,
     decode_values,
     encode_values,
     match_variable,
@@ -79,20 +79,21 @@ def convert_messages(
         processed = set()
         _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
     plans = {item.name: item for item in plan.variables if item.group == "surface"}
+    selected = selected_message_keys(report.messages)
     message_counter = 0
     for source_file in report.source_files:
         for decoded in decoder.iter_file(report.input_dir / source_file.name):
             key = f"message:{source_file.name}:{decoded.meta.message_index}"
             if key in processed:
                 continue
+            if decoded.meta.source_key not in selected:
+                processed.add(key)
+                _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
+                continue
             spec = match_variable(
                 decoded.meta.short_name, decoded.meta.type_of_level, decoded.meta.level
             )
             if spec is None:
-                processed.add(key)
-                _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
-                continue
-            if not accepts_step_type(spec, decoded.meta.step_type):
                 processed.add(key)
                 _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
                 continue

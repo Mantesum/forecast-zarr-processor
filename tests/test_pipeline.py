@@ -82,6 +82,51 @@ def test_instant_cloud_cover_wins_over_average_duplicate(tmp_path: Path) -> None
     assert np.allclose(physical, 0.25, atol=0.0001)
 
 
+def test_latest_precipitation_interval_wins_over_run_accumulation(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    messages = reader.messages["gfs-2025010100-f003.grib2"]
+    shape = (messages[0].meta.nj, messages[0].meta.ni)
+    messages.extend(
+        [
+            decoded_message(
+                "gfs-2025010100-f003.grib2",
+                "tp",
+                3,
+                np.full(shape, 1.5),
+                level=0,
+                units="kg m-2",
+                type_of_level="surface",
+                step_type="accum",
+                start_step=2,
+                end_step=3,
+                message_index=3,
+            ),
+            decoded_message(
+                "gfs-2025010100-f003.grib2",
+                "tp",
+                3,
+                np.full(shape, 7.0),
+                level=0,
+                units="kg m-2",
+                type_of_level="surface",
+                step_type="accum",
+                start_step=0,
+                end_step=3,
+                message_index=4,
+            ),
+        ]
+    )
+    config = processor_config(tmp_path, run_dir)
+    config = config.model_copy(update={"variables": (*config.variables, "precipitation_amount")})
+    output = run_convert(config, reader=reader)
+    root = zarr.open_group(output, mode="r", zarr_format=3)
+    precipitation = root["surface"]["precipitation_amount"]
+    encoded = np.asarray(precipitation[1, :, :])
+    physical = encoded * precipitation.attrs["scale_factor"] + precipitation.attrs["add_offset"]
+    assert np.allclose(physical, 1.5, atol=0.01)
+    assert precipitation.attrs["cell_methods"] == "time: sum"
+
+
 def test_real_eccodes_grib_round_trip(tmp_path: Path) -> None:
     run_dir = real_grib_source_run(tmp_path)
     output = run_convert(processor_config(tmp_path, run_dir))

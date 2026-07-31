@@ -12,7 +12,7 @@ from forecast_zarr.errors import InputContractError, UnsupportedGridError
 from forecast_zarr.grib import EccodesReader, GribReader
 from forecast_zarr.hashing import sha256_json
 from forecast_zarr.manifest import load_source_manifest
-from forecast_zarr.models import GridInventory, InspectionReport, VariableInventory
+from forecast_zarr.models import GridInventory, InspectionReport, MessageMeta, VariableInventory
 from forecast_zarr.normalization import (
     SPECS_BY_NAME,
     accepts_step_type,
@@ -20,6 +20,25 @@ from forecast_zarr.normalization import (
     normalize_values,
     regular_grid,
 )
+
+
+def selected_message_keys(messages: tuple[MessageMeta, ...]) -> frozenset[str]:
+    """Select one semantically preferred message per file, variable, and valid time."""
+    grouped: dict[tuple[str, str, object], list[MessageMeta]] = defaultdict(list)
+    for meta in messages:
+        spec = match_variable(meta.short_name, meta.type_of_level, meta.level)
+        if spec is None or not accepts_step_type(spec, meta.step_type):
+            continue
+        grouped[(meta.file_name, spec.name, meta.valid_time)].append(meta)
+
+    selected: set[str] = set()
+    for (_file_name, variable_name, _valid_time), candidates in grouped.items():
+        if variable_name == "precipitation_amount":
+            preferred = max(candidates, key=lambda item: (item.start_step, -item.message_index))
+            selected.add(preferred.source_key)
+        else:
+            selected.update(item.source_key for item in candidates)
+    return frozenset(selected)
 
 
 def _region_mask(
@@ -76,8 +95,6 @@ def inspect_run(
     steps_by_file: dict[str, set[int]] = defaultdict(set)
     latitudes: set[float] = set()
     longitudes: set[float] = set()
-    aggregates: dict[str, dict[str, Any]] = {}
-    identities: dict[tuple[str, object], int] = defaultdict(int)
 
     for source_file in manifest.files:
         path = input_dir / source_file.name
@@ -120,34 +137,6 @@ def inspect_run(
                 ]
             latitudes.update(float(value) for value in lat_axis)
             longitudes.update(float(value) for value in lon_axis)
-            finite = canonical[np.isfinite(canonical)]
-            item = aggregates.setdefault(
-                spec.name,
-                {
-                    "short_names": set(),
-                    "levels": set(),
-                    "valid_times": set(),
-                    "minimum": None,
-                    "maximum": None,
-                    "duplicates": 0,
-                },
-            )
-            item["short_names"].add(meta.short_name)
-            item["levels"].add(f"{meta.type_of_level}:{meta.level:g}")
-            item["valid_times"].add(meta.valid_time)
-            if finite.size:
-                value_min = float(finite.min())
-                value_max = float(finite.max())
-                item["minimum"] = (
-                    value_min if item["minimum"] is None else min(item["minimum"], value_min)
-                )
-                item["maximum"] = (
-                    value_max if item["maximum"] is None else max(item["maximum"], value_max)
-                )
-            identity = (spec.name, meta.valid_time)
-            identities[identity] += 1
-            if identities[identity] > 1:
-                item["duplicates"] += 1
         expected = manifest.expected_parameters(source_file.name)
         absent = expected - observed_by_file[source_file.name]
         if absent:
@@ -161,6 +150,43 @@ def inspect_run(
         raise InputContractError("source run contains no GRIB messages")
     if not latitudes or not longitudes:
         raise InputContractError("manifest regions do not intersect the GRIB grid")
+    selected = selected_message_keys(tuple(messages))
+    aggregates: dict[str, dict[str, Any]] = {}
+    identities: dict[tuple[str, object], int] = defaultdict(int)
+    for meta in messages:
+        if meta.source_key not in selected:
+            continue
+        spec = match_variable(meta.short_name, meta.type_of_level, meta.level)
+        assert spec is not None
+        item = aggregates.setdefault(
+            spec.name,
+            {
+                "short_names": set(),
+                "levels": set(),
+                "valid_times": set(),
+                "minimum": None,
+                "maximum": None,
+                "duplicates": 0,
+            },
+        )
+        item["short_names"].add(meta.short_name)
+        item["levels"].add(f"{meta.type_of_level}:{meta.level:g}")
+        item["valid_times"].add(meta.valid_time)
+        extrema = [value for value in (meta.minimum, meta.maximum) if value is not None]
+        if extrema:
+            canonical = normalize_values(spec, np.asarray(extrema, dtype=np.float64), meta.units)
+            value_min = float(canonical.min())
+            value_max = float(canonical.max())
+            item["minimum"] = (
+                value_min if item["minimum"] is None else min(item["minimum"], value_min)
+            )
+            item["maximum"] = (
+                value_max if item["maximum"] is None else max(item["maximum"], value_max)
+            )
+        identity = (spec.name, meta.valid_time)
+        identities[identity] += 1
+        if identities[identity] > 1:
+            item["duplicates"] += 1
     inventory = tuple(
         VariableInventory(
             name=name,

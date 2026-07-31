@@ -43,6 +43,8 @@ def decoded_message(
     units: str,
     type_of_level: str = "heightAboveGround",
     step_type: str = "instant",
+    start_step: int | None = None,
+    end_step: int | None = None,
     message_index: int | None = None,
 ) -> DecodedMessage:
     run = datetime(2025, 1, 1, tzinfo=UTC)
@@ -65,6 +67,8 @@ def decoded_message(
             forecast_reference_time=run,
             forecast_step=step,
             step_type=step_type,
+            start_step=step if start_step is None else start_step,
+            end_step=step if end_step is None else end_step,
             grid_type="regular_ll",
             ni=4,
             nj=3,
