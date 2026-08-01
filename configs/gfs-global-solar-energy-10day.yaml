@@ -16,8 +16,6 @@ variables:
   - air_temperature_2m
   - eastward_wind_10m
   - northward_wind_10m
-  - wind_speed_10m
-  - wind_from_direction_10m
   - relative_humidity_2m
   - dew_point_temperature_2m
   - surface_albedo

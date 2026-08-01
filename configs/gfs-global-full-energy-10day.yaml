@@ -8,14 +8,15 @@ compression_level: 7
 variables:
   - air_temperature_2m
   - relative_humidity_2m
+  - specific_humidity_2m
   - dew_point_temperature_2m
   - air_pressure_at_mean_sea_level
   - surface_air_pressure
+  - surface_temperature
   - eastward_wind_10m
   - northward_wind_10m
-  - wind_speed_10m
-  - wind_from_direction_10m
   - precipitation_amount
+  - precipitation_rate
   - cloud_area_fraction
   - visibility_in_air
   - surface_downwelling_shortwave_flux_in_air
@@ -32,14 +33,6 @@ variables:
   - atmosphere_boundary_layer_thickness
   - friction_velocity
   - surface_roughness_length
-  - wind_speed_80m
-  - wind_speed_100m
-  - wind_from_direction_80m
-  - wind_from_direction_100m
-  - relative_humidity_80m
-  - air_density_80m
-  - wind_shear_exponent_10m_100m
-  - wind_power_density_100m
   - surface_upwelling_shortwave_flux_in_air
   - surface_downwelling_longwave_flux_in_air
   - low_cloud_area_fraction

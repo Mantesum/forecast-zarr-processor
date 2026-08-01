@@ -20,7 +20,6 @@ from forecast_zarr.models import (
     VariableInventory,
 )
 from forecast_zarr.normalization import (
-    DERIVED_DEPENDENCIES,
     SPECS_BY_NAME,
     VariableSpec,
     accepts_step_type,
@@ -208,6 +207,10 @@ def inspect_run(
         if steps_by_file[source_file.name] != {source_file.forecast_step}:
             raise InputContractError(f"mixed or missing forecast steps in {source_file.name}")
 
+    if unknown:
+        raise InputContractError(
+            "unmapped GRIB messages would be omitted: " + ", ".join(sorted(set(unknown)))
+        )
     if not messages:
         raise InputContractError("source run contains no GRIB messages")
     if not latitudes or not longitudes:
@@ -263,8 +266,8 @@ def inspect_run(
         for name, item in sorted(aggregates.items())
     )
     available = {item.name for item in inventory}
-    direct_requested = {name for name in config.variables if name not in DERIVED_DEPENDENCIES}
-    missing = tuple(sorted(direct_requested - available))
+    requested_sources = {name for name in config.variables if name in SPECS_BY_NAME}
+    missing = tuple(sorted(requested_sources - available))
     input_hash = sha256_json(
         {
             "manifest": manifest_hash,

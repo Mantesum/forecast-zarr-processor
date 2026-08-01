@@ -3,19 +3,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from forecast_zarr.errors import InputContractError
 from forecast_zarr.inspection import inspect_run
 from forecast_zarr.manifest import load_source_manifest
-from tests.helpers import processor_config, source_run
+from tests.helpers import decoded_message, processor_config, source_run
 
 
 def test_actual_forecast_ingest_contract_loads(tmp_path: Path) -> None:
     run_dir, _ = source_run(tmp_path)
     manifest, path, digest = load_source_manifest(run_dir)
     assert manifest.schema_version == "1.0"
-    assert manifest.expected_parameters(manifest.files[0].name) == {"2t", "10u", "10v"}
+    assert manifest.expected_parameters(manifest.files[0].name) == {"2t", "10u", "10v", "prate"}
     assert path.name == "manifest.json"
     assert len(digest) == 64
 
@@ -61,4 +62,24 @@ def test_schema_1_1_exact_field_mismatch_is_rejected(tmp_path: Path) -> None:
     path.write_text(json.dumps(document), encoding="utf-8")
 
     with pytest.raises(InputContractError, match="missing manifest fields"):
+        inspect_run(processor_config(tmp_path, run_dir), reader=reader)
+
+
+def test_unmapped_grib_field_is_rejected_instead_of_omitted(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    messages = reader.messages["gfs-2025010100-f000.grib2"]
+    messages.append(
+        decoded_message(
+            "gfs-2025010100-f000.grib2",
+            "mystery",
+            0,
+            np.ones((3, 4)),
+            level=0,
+            units="1",
+            type_of_level="surface",
+            message_index=99,
+        )
+    )
+
+    with pytest.raises(InputContractError, match="unmapped GRIB messages would be omitted"):
         inspect_run(processor_config(tmp_path, run_dir), reader=reader)

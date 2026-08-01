@@ -2,7 +2,7 @@
 
 `forecast-zarr-processor` converts a complete
 [`forecast-ingest`](https://github.com/Mantesum/forecast-ingest) GRIB2 run into an
-immutable, validated Zarr v3 store. Version 0.2 supports four ready-made data bundles:
+immutable, validated Zarr v3 store. Version 0.3 supports four ready-made data bundles:
 general weather, wind-power forecasting, solar-power forecasting, and their complete union.
 
 The program does not download forecasts and does not expose an HTTP API. Its place in the
@@ -12,14 +12,15 @@ pipeline is:
 NOAA GFS -> forecast-ingest -> validated GRIB2 -> forecast-zarr-processor -> Zarr v3 -> API/ML
 ```
 
-## What version 0.2 processes
+## What version 0.3 processes
 
 The processor understands `forecast-ingest` manifest schema 1.1 and checks the exact GRIB
 identity of every requested field: parameter, level, height, and time statistic. This is
 important for fields whose short name alone is ambiguous, including the GFS boundary-layer
 height parameter.
 
-The `full_energy` bundle writes 43 arrays:
+The processor writes every source parameter discovered in the GRIB run. The current GFS
+`full_energy` download produces 36 source arrays:
 
 - ordinary forecast fields: temperature, humidity, dew point, pressure, 10 m wind,
   precipitation, clouds, visibility, solar radiation, and terrain height;
@@ -28,11 +29,15 @@ The `full_energy` bundle writes 43 arrays:
 - solar-energy fields: downwelling and upwelling shortwave radiation, downwelling longwave
   radiation, low/middle/high cloud cover, albedo, precipitable water, snow depth, and snow
   water equivalent;
-- calculated fields: wind speed and direction at 10/80/100 m, relative humidity and air
-  density at 80 m, the 10-to-100 m wind-shear exponent, and 100 m wind power density.
+- additional GFS source fields returned by the filter: 2 m specific humidity and surface
+  temperature.
+- instantaneous surface precipitation rate (`PRATE`) alongside accumulated precipitation.
 
-The result is split into `surface/`, `height_80m/`, `height_100m/`, `atmosphere/`, and
-`derived/` groups. Every field has dimensions `(valid_time, latitude, longitude)`.
+The result is split into `surface/`, `height_80m/`, `height_100m/`, and `atmosphere/`
+groups. Every field has dimensions `(valid_time, latitude, longitude)`. The processor does
+not calculate wind speed, direction, density, shear, power density, or any other new field.
+An unmapped GRIB identity is a hard input-contract error, so a successful conversion cannot
+silently omit a source parameter.
 
 For solar power, GFS shortwave radiation is a horizontal-surface irradiance input comparable
 to GHI. The processor deliberately does not invent DNI, DHI, plane-of-array irradiance, or PV

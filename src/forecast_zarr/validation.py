@@ -132,7 +132,7 @@ def validate_round_trip(
     root = zarr.open_group(store=path, mode="r", zarr_format=3)
     latitude = np.asarray(plan.grid.latitude, dtype=np.float64)
     longitude = np.asarray(plan.grid.longitude, dtype=np.float64)
-    direct = {item.name: item for item in plan.variables if item.group != "derived"}
+    direct = {item.name: item for item in plan.variables}
     rng = random.Random(config.validation.random_seed)
     point_checks = 0
     bbox_checks = 0

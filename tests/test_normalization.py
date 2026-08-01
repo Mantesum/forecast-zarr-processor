@@ -43,3 +43,32 @@ def test_boundary_layer_height_uses_native_grib2_identity() -> None:
     matched = match_variable("unknown", "surface", 0, 0, 3, 196)
     assert matched is not None
     assert matched.name == "atmosphere_boundary_layer_thickness"
+
+
+def test_all_observed_full_energy_extras_have_direct_mappings() -> None:
+    expected = {
+        ("2sh", "heightAboveGround", 2): "specific_humidity_2m",
+        ("r", "atmosphereSingleLayer", 0): "relative_humidity_entire_atmosphere",
+        ("t", "surface", 0): "surface_temperature",
+        ("prate", "surface", 0): "precipitation_rate",
+    }
+    for identity, name in expected.items():
+        matched = match_variable(*identity)
+        assert matched is not None
+        assert matched.name == name
+
+
+def test_catalogue_contains_no_calculated_variables() -> None:
+    calculated = {
+        "wind_speed_10m",
+        "wind_speed_80m",
+        "wind_speed_100m",
+        "wind_from_direction_10m",
+        "wind_from_direction_80m",
+        "wind_from_direction_100m",
+        "relative_humidity_80m",
+        "air_density_80m",
+        "wind_shear_exponent_10m_100m",
+        "wind_power_density_100m",
+    }
+    assert calculated.isdisjoint(SPECS_BY_NAME)

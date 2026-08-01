@@ -64,10 +64,8 @@ def load_benchmark_config(path: Path) -> BenchmarkConfig:
 def _read_metrics(path: Path) -> dict[str, Any]:
     root = zarr.open_group(store=path, mode="r", zarr_format=3)
     surface = cast(zarr.Group, root["surface"])
-    group_name = "surface" if list(surface.array_keys()) else "derived"
-    group = cast(zarr.Group, root[group_name])
-    array_name = next(iter(group.array_keys()))
-    array = cast(zarr.Array[Any], group[array_name])
+    array_name = next(iter(surface.array_keys()))
+    array = cast(zarr.Array[Any], surface[array_name])
     time_index = array.shape[0] // 2
     y = array.shape[1] // 2
     x = array.shape[2] // 2
@@ -82,7 +80,7 @@ def _read_metrics(path: Path) -> dict[str, Any]:
     bbox = np.asarray(array[time_index, y0 : y0 + height, x0 : x0 + width])
     bbox_seconds = time.perf_counter() - started
     return {
-        "sample_array": f"{group_name}/{array_name}",
+        "sample_array": f"surface/{array_name}",
         "point_read_seconds": point_seconds,
         "bbox_read_seconds": bbox_seconds,
         "bytes_read": int(point.nbytes + bbox.nbytes),

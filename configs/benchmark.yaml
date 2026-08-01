@@ -6,7 +6,6 @@ processor:
     - air_temperature_2m
     - eastward_wind_10m
     - northward_wind_10m
-    - wind_speed_10m
   runtime:
     memory_budget_gib: 8
     max_workers: 2
@@ -40,4 +39,3 @@ strategies:
       min_spatial_chunk: 180
       max_spatial_chunk: 360
       max_spatial_shard: 720
-

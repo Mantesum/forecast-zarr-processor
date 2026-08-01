@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import shutil
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +18,7 @@ from forecast_zarr.models import (
     VariableInventory,
     VariablePlan,
 )
-from forecast_zarr.normalization import DERIVED_DEPENDENCIES, SPECS_BY_NAME, compact_encoding
+from forecast_zarr.normalization import SPECS_BY_NAME, compact_encoding
 
 GIB = 1024**3
 
@@ -37,7 +36,7 @@ def _tree_size(path: Path) -> int:
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
 
 
-def _encoding(mode: EncodingMode, inventory: VariableInventory | None, name: str) -> ArrayEncoding:
+def _encoding(mode: EncodingMode, inventory: VariableInventory, name: str) -> ArrayEncoding:
     if mode is EncodingMode.LOSSLESS:
         return ArrayEncoding(
             dtype="float32",
@@ -45,104 +44,57 @@ def _encoding(mode: EncodingMode, inventory: VariableInventory | None, name: str
             maximum_absolute_error=0,
         )
     spec = SPECS_BY_NAME[name]
-    if inventory is None:
-        return (
-            compact_encoding(spec, spec.valid_range[0], spec.valid_range[1])
-            if spec.valid_range
-            else ArrayEncoding(
-                dtype="float32",
-                fill_value=float("nan"),
-                maximum_absolute_error=0,
-                fallback_reason="derived_range_unknown",
-            )
-        )
     return compact_encoding(spec, inventory.minimum, inventory.maximum)
-
-
-def _derived_inventory(
-    name: str,
-    by_name: dict[str, VariableInventory],
-    selected_names: set[str],
-) -> tuple[tuple[datetime, ...], tuple[str, ...], tuple[str, ...]] | None:
-    dependencies = DERIVED_DEPENDENCIES.get(name)
-    if dependencies is None or not set(dependencies).issubset(by_name):
-        return None
-    if not set(dependencies).issubset(selected_names):
-        return None
-    common_times = set(by_name[dependencies[0]].valid_times)
-    for dependency in dependencies[1:]:
-        common_times &= set(by_name[dependency].valid_times)
-    return (
-        tuple(sorted(common_times)),
-        dependencies,
-        tuple(level for dependency in dependencies for level in by_name[dependency].source_levels),
-    )
 
 
 def create_plan(config: ProcessorConfig, report: InspectionReport) -> ProcessingPlan:
     """Choose arrays/layouts and reject unsafe disk or memory projections."""
     by_name = {item.name: item for item in report.variables}
-    selected_names = set(config.variables)
-    required_missing = set(config.required_variables) & set(report.missing_variables)
+    required_missing = set(config.required_variables) - set(by_name)
     required_missing.update(
         name
         for name in set(config.required_variables) & set(by_name)
         if by_name[name].minimum is None and by_name[name].maximum is None
     )
-    for required_derived in set(config.required_variables) & set(DERIVED_DEPENDENCIES):
-        if _derived_inventory(required_derived, by_name, selected_names) is None:
-            required_missing.add(required_derived)
     if required_missing:
         raise InputContractError(f"required variables are missing: {sorted(required_missing)}")
 
     variables: list[VariablePlan] = []
     warnings: list[str] = []
+    configured_names = [name for name in config.variables if name in by_name]
+    selected_names = [
+        *configured_names,
+        *(name for name in by_name if name not in configured_names),
+    ]
+    for name in config.variables:
+        if name not in SPECS_BY_NAME:
+            warnings.append(f"configured calculated or unknown variable ignored: {name}")
+        elif name not in by_name:
+            warnings.append(f"configured source variable missing: {name}")
     shape_spatial = (len(report.grid.latitude), len(report.grid.longitude))
     global_valid_times = tuple(sorted({meta.valid_time for meta in report.messages}))
-    for name in config.variables:
-        spec = SPECS_BY_NAME.get(name)
-        if spec is None:
-            warnings.append(f"unknown selected variable skipped: {name}")
-            continue
-        item = by_name.get(name)
-        group = spec.group
-        source_names: tuple[str, ...]
-        source_levels: tuple[str, ...]
-        if name in DERIVED_DEPENDENCIES:
-            derived_info = _derived_inventory(name, by_name, selected_names)
-            if derived_info is None:
-                warnings.append(f"derived variable skipped because components are missing: {name}")
-                continue
-            valid_times, source_names, source_levels = derived_info
-            group = "derived"
-            item_for_encoding = None
-        elif item is None:
-            warnings.append(f"source variable missing: {name}")
-            continue
-        else:
-            valid_times = item.valid_times
-            source_names = item.source_short_names
-            source_levels = item.source_levels
-            item_for_encoding = item
-            if item.duplicate_count:
-                warnings.append(
-                    f"{name} has {item.duplicate_count} repeated time/field messages; "
-                    "coordinate overlaps will be checked during conversion"
-                )
-        encoding = _encoding(config.encoding, item_for_encoding, name)
+    for name in selected_names:
+        spec = SPECS_BY_NAME[name]
+        item = by_name[name]
+        if item.duplicate_count:
+            warnings.append(
+                f"{name} has {item.duplicate_count} repeated time/field messages; "
+                "coordinate overlaps will be checked during conversion"
+            )
+        encoding = _encoding(config.encoding, item, name)
         itemsize = 2 if encoding.dtype == "int16" else 4
         layout = choose_layout((len(global_valid_times), *shape_spatial), itemsize, config.chunking)
         variables.append(
             VariablePlan(
                 name=name,
                 required=name in config.required_variables,
-                group=group,
+                group=spec.group,
                 units=spec.units,
                 standard_name=spec.standard_name,
                 long_name=spec.long_name,
-                source_short_names=source_names,
-                source_levels=tuple(sorted(set(source_levels))),
-                valid_times=valid_times,
+                source_short_names=item.source_short_names,
+                source_levels=item.source_levels,
+                valid_times=item.valid_times,
                 encoding=encoding,
                 layout=layout,
             )
@@ -186,7 +138,7 @@ def create_plan(config: ProcessorConfig, report: InspectionReport) -> Processing
         "crop_to_manifest_regions": config.crop_to_manifest_regions,
         "chunking": config.chunking.model_dump(mode="json"),
         "compression_level": config.compression_level,
-        "processor_schema": "1.4",
+        "processor_schema": "2.0",
     }
     dataset_id = sha256_json(identity)[:24]
     run = report.run_utc.strftime("%Y%m%dT%H%M%SZ")

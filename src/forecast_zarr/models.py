@@ -239,7 +239,7 @@ class VariablePlan(BaseModel):
 
     name: str
     required: bool = False
-    group: Literal["surface", "height_80m", "height_100m", "atmosphere", "derived"]
+    group: Literal["surface", "height_80m", "height_100m", "atmosphere"]
     units: str
     standard_name: str | None
     long_name: str

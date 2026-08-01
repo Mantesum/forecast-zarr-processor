@@ -101,6 +101,17 @@ def source_run(tmp_path: Path) -> tuple[Path, FakeReader]:
             decoded_message(name, "2t", step, 270 + base / 10, level=2, units="K"),
             decoded_message(name, "10u", step, 2 + base / 100, level=10, units="m s-1"),
             decoded_message(name, "10v", step, 3 + base / 100, level=10, units="m s-1"),
+            decoded_message(
+                name,
+                "prate",
+                step,
+                0.001 + base / 1_000_000,
+                level=0,
+                units="kg m-2 s-1",
+                type_of_level="surface",
+                step_type="instant",
+                message_index=3,
+            ),
         ]
         files.append(
             {
@@ -117,7 +128,7 @@ def source_run(tmp_path: Path) -> tuple[Path, FakeReader]:
     plan_files = [
         {
             "name": item["name"],
-            "expected_parameters": ["2t", "10u", "10v"],
+            "expected_parameters": ["2t", "10u", "10v", "prate"],
             "forecast_step": item["forecast_step"],
         }
         for item in files
@@ -130,7 +141,7 @@ def source_run(tmp_path: Path) -> tuple[Path, FakeReader]:
         "original_request": {},
         "applied_plan": {"files": plan_files},
         "files": files,
-        "variables": ["temperature_2m", "wind_u_10m", "wind_v_10m"],
+        "variables": ["temperature_2m", "wind_u_10m", "wind_v_10m", "precipitation_rate"],
         "unsupported_variables": [],
         "levels": [],
         "forecast_steps": [0, 3],
@@ -166,7 +177,7 @@ def energy_source_run(tmp_path: Path) -> tuple[Path, FakeReader]:
             ("q", 80, "kg kg-1", 0.006, "heightAboveGround"),
             ("pres", 80, "Pa", 99_000.0, "heightAboveGround"),
         )
-        for index, (short_name, level, units, value, level_type) in enumerate(fields, start=3):
+        for index, (short_name, level, units, value, level_type) in enumerate(fields, start=4):
             messages.append(
                 decoded_message(
                     name,
@@ -205,7 +216,6 @@ def processor_config(tmp_path: Path, run_dir: Path) -> ProcessorConfig:
             "air_temperature_2m",
             "eastward_wind_10m",
             "northward_wind_10m",
-            "wind_speed_10m",
         ),
         required_variables=("air_temperature_2m", "eastward_wind_10m", "northward_wind_10m"),
         storage=StorageConfig(

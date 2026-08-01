@@ -25,16 +25,6 @@ variables:
   - surface_roughness_length
   - precipitation_amount
   - surface_altitude
-  - wind_speed_10m
-  - wind_speed_80m
-  - wind_speed_100m
-  - wind_from_direction_10m
-  - wind_from_direction_80m
-  - wind_from_direction_100m
-  - relative_humidity_80m
-  - air_density_80m
-  - wind_shear_exponent_10m_100m
-  - wind_power_density_100m
 required_variables:
   - eastward_wind_80m
   - northward_wind_80m
@@ -43,8 +33,6 @@ required_variables:
   - air_temperature_80m
   - specific_humidity_80m
   - air_pressure_80m
-  - wind_speed_100m
-  - air_density_80m
 runtime:
   memory_budget_gib: 8
   max_workers: 2

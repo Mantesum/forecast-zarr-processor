@@ -2,12 +2,21 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
-## [Unreleased]
+## [0.3.0] - 2026-08-01
 
-### Fixed
+### Changed
 
-- Store derived 100 m wind power density as `float32` so extreme hurricane-force winds cannot
-  overflow a statically planned `int16` range.
+- Removed all calculation and storage of derived wind speed, direction, humidity, density,
+  shear, and wind-power-density arrays.
+- Every normalized source field discovered in a GRIB run is now included automatically,
+  regardless of an older local YAML selection list.
+- Inspection now rejects an unmapped GRIB identity instead of publishing an incomplete Zarr.
+
+### Added
+
+- Direct mappings for GFS 2 m specific humidity, surface temperature, and instantaneous
+  precipitation rate (`PRATE`). The older whole-atmosphere relative-humidity field remains
+  readable for backward compatibility but is no longer selected by current profiles.
 
 ## [0.2.0] - 2026-07-31
 

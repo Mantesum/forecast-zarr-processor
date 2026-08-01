@@ -10,7 +10,6 @@ variables:
   - air_pressure_at_mean_sea_level
   - eastward_wind_10m
   - northward_wind_10m
-  - wind_speed_10m
   - cloud_area_fraction
   - precipitation_amount
 required_variables:

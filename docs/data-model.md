@@ -24,30 +24,22 @@ Data arrays use `(valid_time, latitude, longitude)`. They are grouped by physica
 - `height_80m/`: wind, temperature, humidity, and pressure at 80 m above ground;
 - `height_100m/`: wind and temperature at 100 m above ground;
 - `atmosphere/`: whole-column and boundary-layer fields;
-- `derived/`: deterministic quantities calculated from stored source arrays.
 
 Only regular latitude/longitude grids are supported. Missing source steps are fill values and
 are never interpolated. An optional field may be entirely missing for a time and area — for
 example snow over ocean — while a configured required field must contain usable data.
 
-## Direct and calculated variables
+## Source variables only
 
 Direct variables retain their source parameter, level, units, interval statistic, license,
 and attribution. Interval-average radiation and albedo are marked `time: mean`; accumulated
-precipitation is marked `time: sum`.
+precipitation is marked `time: sum`; source `PRATE` is retained as instantaneous
+`precipitation_rate` with units `kg m-2 s-1`.
 
-Calculated fields use the following definitions:
-
-- wind speed: `sqrt(u^2 + v^2)`;
-- meteorological wind-from direction: `(270 - atan2(v, u) in degrees) mod 360`;
-- 80 m relative humidity: derived from specific humidity, pressure, and temperature;
-- 80 m moist-air density: calculated using virtual temperature;
-- 10-to-100 m shear exponent: `ln(V100 / V10) / ln(100 / 10)` for non-calm winds;
-- 100 m wind power density: `0.5 * rho80 * V100^3`.
-
-The density at 80 m is the closest internally consistent GFS input available for the 100 m
-power-density estimate. A downstream turbine model should still apply hub height, terrain,
-wake, availability, icing, curtailment, and the actual turbine power curve.
+The processor never calculates additional meteorological or energy variables. Wind speed,
+direction, air density, shear, wind power density, solar geometry, and generation estimates
+belong in downstream API or site-specific modelling layers. Every GRIB identity must have an
+explicit normalization mapping; otherwise inspection fails instead of silently dropping it.
 
 For solar modelling, shortwave radiation is retained as a horizontal-surface forecast input.
 DNI, DHI, plane-of-array irradiance, cell temperature, and electrical power are intentionally

@@ -6,7 +6,6 @@ from pathlib import Path
 import numpy as np
 import zarr
 
-from forecast_zarr.conversion import _calculate_derived
 from forecast_zarr.pipeline import run_convert
 from forecast_zarr.validation import validate_structure
 from tests.helpers import (
@@ -29,8 +28,8 @@ def test_end_to_end_writes_ready_zarr_v3_and_is_idempotent(tmp_path: Path) -> No
     root = zarr.open_group(output, mode="r", zarr_format=3)
     assert root.metadata.zarr_format == 3
     assert root["surface"]["eastward_wind_10m"].shape == (2, 3, 4)
-    speed = np.asarray(root["derived"]["wind_speed_10m"][0, :, :])
-    assert np.isfinite(speed).all()
+    assert root["surface"]["precipitation_rate"].attrs["standard_name"] == "precipitation_flux"
+    assert "derived" not in root
     assert validate_structure(output, require_ready=True)["zarr_format"] == 3
     assert run_convert(config, reader=reader) == output
 
@@ -64,7 +63,7 @@ def test_instant_cloud_cover_wins_over_average_duplicate(tmp_path: Path) -> None
                     units="%",
                     type_of_level="atmosphere",
                     step_type="instant",
-                    message_index=3,
+                    message_index=4,
                 ),
                 decoded_message(
                     name,
@@ -75,7 +74,7 @@ def test_instant_cloud_cover_wins_over_average_duplicate(tmp_path: Path) -> None
                     units="%",
                     type_of_level="atmosphere",
                     step_type="avg",
-                    message_index=4,
+                    message_index=5,
                 ),
             ]
         )
@@ -106,7 +105,7 @@ def test_latest_precipitation_interval_wins_over_run_accumulation(tmp_path: Path
                 step_type="accum",
                 start_step=2,
                 end_step=3,
-                message_index=3,
+                message_index=4,
             ),
             decoded_message(
                 "gfs-2025010100-f003.grib2",
@@ -119,7 +118,7 @@ def test_latest_precipitation_interval_wins_over_run_accumulation(tmp_path: Path
                 step_type="accum",
                 start_step=0,
                 end_step=3,
-                message_index=4,
+                message_index=5,
             ),
         ]
     )
@@ -143,7 +142,7 @@ def test_real_eccodes_grib_round_trip(tmp_path: Path) -> None:
     assert validate_structure(output, require_ready=True)["zarr_format"] == 3
 
 
-def test_energy_fields_and_derived_wind_are_written_to_separate_groups(tmp_path: Path) -> None:
+def test_all_source_energy_fields_are_written_without_derived_group(tmp_path: Path) -> None:
     run_dir, reader = energy_source_run(tmp_path)
     variables = (
         "eastward_wind_10m",
@@ -157,12 +156,6 @@ def test_energy_fields_and_derived_wind_are_written_to_separate_groups(tmp_path:
         "specific_humidity_80m",
         "air_pressure_80m",
         "atmosphere_boundary_layer_thickness",
-        "wind_speed_80m",
-        "wind_from_direction_100m",
-        "relative_humidity_80m",
-        "air_density_80m",
-        "wind_shear_exponent_10m_100m",
-        "wind_power_density_100m",
     )
     config = processor_config(tmp_path, run_dir).model_copy(
         update={"variables": variables, "required_variables": variables}
@@ -174,32 +167,4 @@ def test_energy_fields_and_derived_wind_are_written_to_separate_groups(tmp_path:
     assert "eastward_wind_80m" in root["height_80m"]
     assert "air_temperature_100m" in root["height_100m"]
     assert "atmosphere_boundary_layer_thickness" in root["atmosphere"]
-    for name in (
-        "wind_speed_80m",
-        "wind_from_direction_100m",
-        "relative_humidity_80m",
-        "air_density_80m",
-        "wind_shear_exponent_10m_100m",
-        "wind_power_density_100m",
-    ):
-        assert np.isfinite(np.asarray(root["derived"][name][:])).all()
-
-
-def test_derived_formula_semantics() -> None:
-    east = np.asarray([[1.0]], dtype=np.float64)
-    north = np.asarray([[0.0]], dtype=np.float64)
-    direction = _calculate_derived(
-        "wind_from_direction_10m",
-        {"eastward_wind_10m": east, "northward_wind_10m": north},
-    )
-    assert direction.item() == 270
-
-    thermodynamics = {
-        "air_temperature_80m": np.asarray([[280.0]]),
-        "specific_humidity_80m": np.asarray([[0.006]]),
-        "air_pressure_80m": np.asarray([[99_000.0]]),
-    }
-    humidity = _calculate_derived("relative_humidity_80m", thermodynamics)
-    density = _calculate_derived("air_density_80m", thermodynamics)
-    assert 90 < humidity.item() < 100
-    assert 1.1 < density.item() < 1.4
+    assert "derived" not in root
