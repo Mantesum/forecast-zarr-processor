@@ -143,7 +143,7 @@ class ForecastStore:
             if variable.name == "precipitation_amount":
                 attrs["cell_methods"] = "time: sum"
                 attrs["source_interval_selection"] = "latest startStep ending at valid_time"
-            if variable.name == "precipitation_rate":
+            if variable.name == "precipitation_flux":
                 attrs["cell_methods"] = "time: point"
                 attrs["source_time_statistic"] = "instantaneous"
             if variable.name in {

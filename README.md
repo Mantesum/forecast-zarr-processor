@@ -20,7 +20,7 @@ important for fields whose short name alone is ambiguous, including the GFS boun
 height parameter.
 
 The processor writes every source parameter discovered in the GRIB run. The current GFS
-`full_energy` download produces 36 source arrays:
+`full_energy` download from `forecast-ingest` 0.2.1 produces exactly 34 source arrays:
 
 - ordinary forecast fields: temperature, humidity, dew point, pressure, 10 m wind,
   precipitation, clouds, visibility, solar radiation, and terrain height;
@@ -29,9 +29,12 @@ The processor writes every source parameter discovered in the GRIB run. The curr
 - solar-energy fields: downwelling and upwelling shortwave radiation, downwelling longwave
   radiation, low/middle/high cloud cover, albedo, precipitable water, snow depth, and snow
   water equivalent;
-- additional GFS source fields returned by the filter: 2 m specific humidity and surface
-  temperature.
 - instantaneous surface precipitation rate (`PRATE`) alongside accumulated precipitation.
+
+`PRATE` is written as `surface/precipitation_flux`; only its instantaneous GRIB message is
+used, including at `f000`. An interval-average PRATE message returned by NOMADS is ignored.
+Precipitable water may arrive in a separate GRIB file with the same forecast step and valid
+time as the main file; the processor merges both files onto the shared time coordinate.
 
 The result is split into `surface/`, `height_80m/`, `height_100m/`, and `atmosphere/`
 groups. Every field has dimensions `(valid_time, latitude, longitude)`. The processor does

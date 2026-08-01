@@ -45,17 +45,17 @@ def test_boundary_layer_height_uses_native_grib2_identity() -> None:
     assert matched.name == "atmosphere_boundary_layer_thickness"
 
 
-def test_all_observed_full_energy_extras_have_direct_mappings() -> None:
-    expected = {
-        ("2sh", "heightAboveGround", 2): "specific_humidity_2m",
-        ("r", "atmosphereSingleLayer", 0): "relative_humidity_entire_atmosphere",
-        ("t", "surface", 0): "surface_temperature",
-        ("prate", "surface", 0): "precipitation_rate",
-    }
-    for identity, name in expected.items():
-        matched = match_variable(*identity)
-        assert matched is not None
-        assert matched.name == name
+def test_prate_uses_exact_native_identity_and_canonical_name() -> None:
+    matched = match_variable("prate", "surface", 0, 0, 1, 7)
+    assert matched is not None
+    assert matched.name == "precipitation_flux"
+    assert match_variable("prate", "surface", 0) is None
+
+
+def test_fields_absent_from_forecast_ingest_0_2_1_are_not_mapped() -> None:
+    assert match_variable("2sh", "heightAboveGround", 2) is None
+    assert match_variable("t", "surface", 0) is None
+    assert match_variable("r", "atmosphereSingleLayer", 0) is None
 
 
 def test_catalogue_contains_no_calculated_variables() -> None:

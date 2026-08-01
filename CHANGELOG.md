@@ -2,6 +2,19 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.3.1] - 2026-08-01
+
+### Fixed
+
+- Matched the exact 34-field `forecast-ingest` 0.2.1 contract and its 21/5/3/5 Zarr group
+  split.
+- Renamed the canonical instantaneous PRATE array to `precipitation_flux` and require its
+  native GRIB2 identity `0/1/7`; interval-average PRATE is ignored and `f000` is retained.
+- Removed mappings for the no-longer-downloaded whole-atmosphere relative humidity, 2 m
+  specific humidity, and surface temperature fields.
+- Confirmed that fields split across files with the same forecast step, such as PWAT, merge
+  onto one time coordinate.
+
 ## [0.3.0] - 2026-08-01
 
 ### Changed

@@ -32,7 +32,7 @@ def test_plan_is_deterministic_and_includes_every_source_field(tmp_path: Path) -
         "air_temperature_2m",
         "eastward_wind_10m",
         "northward_wind_10m",
-        "precipitation_rate",
+        "precipitation_flux",
     }
     assert all(item.group != "derived" for item in first.variables)
 

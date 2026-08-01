@@ -111,6 +111,9 @@ def source_run(tmp_path: Path) -> tuple[Path, FakeReader]:
                 type_of_level="surface",
                 step_type="instant",
                 message_index=3,
+                discipline=0,
+                parameter_category=1,
+                parameter_number=7,
             ),
         ]
         files.append(

@@ -34,7 +34,9 @@ example snow over ocean — while a configured required field must contain usabl
 Direct variables retain their source parameter, level, units, interval statistic, license,
 and attribution. Interval-average radiation and albedo are marked `time: mean`; accumulated
 precipitation is marked `time: sum`; source `PRATE` is retained as instantaneous
-`precipitation_rate` with units `kg m-2 s-1`.
+`precipitation_flux` with units `kg m-2 s-1`. Only instantaneous PRATE is retained; an
+interval-average PRATE message is ignored. Source fields split across multiple GRIB files at
+the same forecast step, including the dedicated PWAT file, share one `valid_time` slice.
 
 The processor never calculates additional meteorological or energy variables. Wind speed,
 direction, air density, shear, wind power density, solar geometry, and generation estimates

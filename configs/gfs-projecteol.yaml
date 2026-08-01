@@ -9,15 +9,13 @@ compression_level: 7
 variables:
   - air_temperature_2m
   - relative_humidity_2m
-  - specific_humidity_2m
   - dew_point_temperature_2m
   - air_pressure_at_mean_sea_level
   - surface_air_pressure
-  - surface_temperature
   - eastward_wind_10m
   - northward_wind_10m
   - precipitation_amount
-  - precipitation_rate
+  - precipitation_flux
   - cloud_area_fraction
   - visibility_in_air
   - surface_downwelling_shortwave_flux_in_air

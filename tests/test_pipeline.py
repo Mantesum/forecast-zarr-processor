@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -28,7 +29,7 @@ def test_end_to_end_writes_ready_zarr_v3_and_is_idempotent(tmp_path: Path) -> No
     root = zarr.open_group(output, mode="r", zarr_format=3)
     assert root.metadata.zarr_format == 3
     assert root["surface"]["eastward_wind_10m"].shape == (2, 3, 4)
-    assert root["surface"]["precipitation_rate"].attrs["standard_name"] == "precipitation_flux"
+    assert root["surface"]["precipitation_flux"].attrs["standard_name"] == "precipitation_flux"
     assert "derived" not in root
     assert validate_structure(output, require_ready=True)["zarr_format"] == 3
     assert run_convert(config, reader=reader) == output
@@ -86,6 +87,101 @@ def test_instant_cloud_cover_wins_over_average_duplicate(tmp_path: Path) -> None
     encoded = np.asarray(cloud[:])
     physical = encoded * cloud.attrs["scale_factor"] + cloud.attrs["add_offset"]
     assert np.allclose(physical, 0.25, atol=0.0001)
+
+
+def test_prate_uses_instant_not_average_and_includes_f000(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    for messages in reader.messages.values():
+        first = messages[0]
+        step = first.meta.forecast_step
+        name = first.meta.file_name
+        shape = (first.meta.nj, first.meta.ni)
+        messages.append(
+            decoded_message(
+                name,
+                "prate",
+                step,
+                np.full(shape, 0.5),
+                level=0,
+                units="kg m-2 s-1",
+                type_of_level="surface",
+                step_type="avg",
+                message_index=21,
+                discipline=0,
+                parameter_category=1,
+                parameter_number=7,
+            )
+        )
+
+    output = run_convert(processor_config(tmp_path, run_dir), reader=reader)
+    root = zarr.open_group(output, mode="r", zarr_format=3)
+    precipitation = root["surface"]["precipitation_flux"]
+    encoded = np.asarray(precipitation[:])
+    physical = encoded * precipitation.attrs["scale_factor"] + precipitation.attrs["add_offset"]
+
+    assert np.isfinite(physical[0]).all()
+    assert np.all(physical < 0.01)
+    assert precipitation.attrs["cell_methods"] == "time: point"
+
+
+def test_pwat_sidecar_with_same_forecast_step_merges_by_valid_time(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    name = "gfs-2025010100-f003-pwat.grib2"
+    payload = b"synthetic-pwat-sidecar"
+    (run_dir / name).write_bytes(payload)
+    reader.messages[name] = [
+        decoded_message(
+            name,
+            "pwat",
+            3,
+            np.full((3, 4), 20.0),
+            level=0,
+            units="kg m-2",
+            type_of_level="atmosphereSingleLayer",
+            message_index=0,
+        )
+    ]
+
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = "1.1"
+    manifest["files"].append(
+        {
+            "name": name,
+            "url": "https://example.invalid/pwat.grib2",
+            "size": len(payload),
+            "etag": None,
+            "checksum": f"sha256:{hashlib.sha256(payload).hexdigest()}",
+            "forecast_step": 3,
+            "status": "validated",
+            "completed_at": "2025-01-01T00:00:00+00:00",
+        }
+    )
+    manifest["applied_plan"]["files"].append(
+        {
+            "name": name,
+            "forecast_step": 3,
+            "expected_parameters": ["pwat"],
+            "expected_fields": [
+                {
+                    "short_name": "pwat",
+                    "type_of_level": "atmosphereSingleLayer",
+                    "level": "0",
+                    "step_type": "instant",
+                }
+            ],
+        }
+    )
+    manifest["variables"].append("precipitable_water")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    output = run_convert(processor_config(tmp_path, run_dir), reader=reader)
+    root = zarr.open_group(output, mode="r", zarr_format=3)
+    pwat = root["atmosphere"]["atmosphere_mass_content_of_water_vapor"]
+    encoded = np.asarray(pwat[1, :, :])
+    physical = encoded * pwat.attrs["scale_factor"] + pwat.attrs["add_offset"]
+
+    assert np.allclose(physical, 20.0, atol=0.01)
 
 
 def test_latest_precipitation_interval_wins_over_run_accumulation(tmp_path: Path) -> None:
