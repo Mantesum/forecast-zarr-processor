@@ -131,6 +131,7 @@ def inspect_run(
     decoder = reader or EccodesReader()
     messages = []
     unknown: list[str] = []
+    ignored_outside_contract: list[str] = []
     observed_by_file: dict[str, set[str]] = defaultdict(set)
     messages_by_file: dict[str, list[MessageMeta]] = defaultdict(list)
     steps_by_file: dict[str, set[int]] = defaultdict(set)
@@ -139,6 +140,7 @@ def inspect_run(
 
     for source_file in manifest.files:
         path = input_dir / source_file.name
+        exact_expected = manifest.expected_fields(source_file.name)
         for decoded in decoder.iter_file(path):
             meta = decoded.meta
             if meta.grid_type != "regular_ll":
@@ -155,15 +157,19 @@ def inspect_run(
                     f"forecast step mismatch in {source_file.name}: "
                     f"{meta.forecast_step} != {source_file.forecast_step}"
                 )
-            messages.append(meta)
             messages_by_file[source_file.name].append(meta)
             observed_by_file[source_file.name].add(meta.short_name)
             steps_by_file[source_file.name].add(meta.forecast_step)
+            label = f"{meta.short_name}:{meta.type_of_level}:{meta.level:g}:{meta.step_type}"
+            if exact_expected and not any(
+                _matches_expected_field(field, meta) for field in exact_expected
+            ):
+                ignored_outside_contract.append(label)
+                continue
+            messages.append(meta)
             spec = match_message(meta)
             if spec is None:
-                unknown.append(
-                    f"{meta.short_name}:{meta.type_of_level}:{meta.level:g}:{meta.step_type}"
-                )
+                unknown.append(label)
                 continue
             if not accepts_step_type(spec, meta.step_type):
                 continue
@@ -187,7 +193,6 @@ def inspect_run(
             raise InputContractError(
                 f"{source_file.name} is missing manifest parameters: {sorted(absent)}"
             )
-        exact_expected = manifest.expected_fields(source_file.name)
         absent_fields = tuple(
             field
             for field in exact_expected
@@ -286,7 +291,7 @@ def inspect_run(
         messages=tuple(messages),
         variables=inventory,
         missing_variables=missing,
-        unknown_messages=tuple(sorted(set(unknown))),
+        unknown_messages=tuple(sorted(set(ignored_outside_contract))),
         grid=GridInventory(
             grid_type="regular_ll",
             latitude=tuple(sorted(latitudes)),

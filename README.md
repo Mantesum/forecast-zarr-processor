@@ -39,8 +39,10 @@ time as the main file; the processor merges both files onto the shared time coor
 The result is split into `surface/`, `height_80m/`, `height_100m/`, and `atmosphere/`
 groups. Every field has dimensions `(valid_time, latitude, longitude)`. The processor does
 not calculate wind speed, direction, density, shear, power density, or any other new field.
-An unmapped GRIB identity is a hard input-contract error, so a successful conversion cannot
-silently omit a source parameter.
+An unmapped identity declared by manifest schema 1.1 is a hard input-contract error, so a
+successful conversion cannot silently omit a requested source parameter. Extra NOMADS
+messages outside the declared field contract are reported and ignored; they do not expand the
+34-array dataset.
 
 For solar power, GFS shortwave radiation is a horizontal-surface irradiance input comparable
 to GHI. The processor deliberately does not invent DNI, DHI, plane-of-array irradiance, or PV

@@ -1,3 +1,3 @@
 """Forecast GRIB2 to Zarr v3 processor."""
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"

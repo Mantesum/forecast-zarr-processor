@@ -40,8 +40,10 @@ the same forecast step, including the dedicated PWAT file, share one `valid_time
 
 The processor never calculates additional meteorological or energy variables. Wind speed,
 direction, air density, shear, wind power density, solar geometry, and generation estimates
-belong in downstream API or site-specific modelling layers. Every GRIB identity must have an
-explicit normalization mapping; otherwise inspection fails instead of silently dropping it.
+belong in downstream API or site-specific modelling layers. Every GRIB identity declared by
+schema 1.1 must have an explicit normalization mapping; otherwise inspection fails. Additional
+NOMADS side-effect messages not declared by the schema 1.1 `expected_fields` contract are
+reported and ignored, so they cannot silently expand the 34-array profile.
 
 For solar modelling, shortwave radiation is retained as a horizontal-surface forecast input.
 DNI, DHI, plane-of-array irradiance, cell temperature, and electrical power are intentionally

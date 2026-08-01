@@ -169,7 +169,13 @@ def create_plan(config: ProcessorConfig, report: InspectionReport) -> Processing
         encoding_mode=config.encoding.value,
         budget=budget,
         warnings=tuple(
-            [*warnings, *(f"unmapped GRIB message: {item}" for item in report.unknown_messages)]
+            [
+                *warnings,
+                *(
+                    f"ignored GRIB message outside schema 1.1 contract: {item}"
+                    for item in report.unknown_messages
+                ),
+            ]
         ),
     )
 

@@ -2,6 +2,15 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.3.2] - 2026-08-01
+
+### Fixed
+
+- Ignore NOMADS side-effect messages such as 2 m specific humidity and surface temperature
+  when schema 1.1 does not declare their exact field identities, keeping the output at exactly
+  34 arrays.
+- Continue to reject any declared schema 1.1 field that has no normalization mapping.
+
 ## [0.3.1] - 2026-08-01
 
 ### Fixed
