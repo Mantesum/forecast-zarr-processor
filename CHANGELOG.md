@@ -2,6 +2,13 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.3] - 2026-08-12
+
+### Changed
+
+- Persist the resumable ingestion checkpoint and scan staging size once per source file
+  instead of once per GRIB message, avoiding quadratic metadata and directory I/O.
+
 ## [0.4.2] - 2026-08-12
 
 ### Fixed

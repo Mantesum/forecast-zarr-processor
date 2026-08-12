@@ -104,7 +104,6 @@ def convert_messages(
         _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
     plans = {item.name: item for item in plan.variables}
     selected = selected_message_keys(report.messages)
-    message_counter = 0
     for source_file in report.source_files:
         for decoded in decoder.iter_file(report.input_dir / source_file.name):
             key = f"message:{source_file.name}:{decoded.meta.message_index}"
@@ -112,12 +111,10 @@ def convert_messages(
                 continue
             if decoded.meta.source_key not in selected:
                 processed.add(key)
-                _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
                 continue
             spec = match_message(decoded.meta)
             if spec is None:
                 processed.add(key)
-                _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
                 continue
             variable = plans.get(spec.name)
             if variable is not None:
@@ -130,10 +127,10 @@ def convert_messages(
                 )
                 store.write_block(variable, decoded.meta.valid_time, lat, lon, values)
             processed.add(key)
-            _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
-            message_counter += 1
-            if message_counter % 8 == 0:
-                _guard_disk(config, plan)
+        # Rewriting a partially processed source file is idempotent, so one durable
+        # checkpoint and disk scan per file is sufficient and avoids quadratic I/O.
+        _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
+        _guard_disk(config, plan)
     _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
     _guard_disk(config, plan)
     return store
