@@ -132,7 +132,12 @@ def run_convert(
     convert_messages(config, plan, report, reader=decoder)
     assemble_final_store(config, plan, report)
     conversion_seconds = time.perf_counter() - write_started
-    structural = validate_structure(plan.staging_path, plan, require_ready=False)
+    structural = validate_structure(
+        plan.staging_path,
+        plan,
+        require_ready=False,
+        time_samples=config.validation.time_samples,
+    )
     round_trip = validate_round_trip(plan.staging_path, config, plan, report, reader=decoder)
     metadata_checksum = _critical_metadata_checksum(plan.staging_path)
     versions = _software_versions(decoder)

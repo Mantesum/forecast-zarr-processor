@@ -2,6 +2,15 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.7] - 2026-08-12
+
+### Changed
+
+- Validate deterministic samples from the beginning, middle, and end of each variable's
+  forecast timeline instead of decoding every source file and every Zarr time slice.
+- Keep full structural, shape, chunk-layout, metadata, and atomic publication checks while
+  making the number of temporal validation samples configurable.
+
 ## [0.4.6] - 2026-08-12
 
 ### Changed

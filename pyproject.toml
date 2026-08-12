@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "forecast-zarr-processor"
-version = "0.4.6"
+version = "0.4.7"
 description = "Convert weather, wind-energy, and solar-energy forecast GRIB2 runs to validated Zarr v3 stores"
 readme = "README.md"
 requires-python = ">=3.12"

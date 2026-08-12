@@ -23,11 +23,23 @@ from forecast_zarr.normalization import (
 )
 
 
+def _sample_indices(length: int, count: int) -> tuple[int, ...]:
+    """Choose deterministic, evenly spread positions including both endpoints."""
+    if length <= 0:
+        return ()
+    if count >= length:
+        return tuple(range(length))
+    if count == 1:
+        return (length // 2,)
+    return tuple(sorted({round(index * (length - 1) / (count - 1)) for index in range(count)}))
+
+
 def validate_structure(
     path: Path,
     plan: ProcessingPlan | None = None,
     *,
     require_ready: bool = True,
+    time_samples: int = 3,
 ) -> dict[str, Any]:
     """Validate Zarr v3 metadata, coordinates, dimensions, and physical ranges."""
     metadata_path = path / "zarr.json"
@@ -81,8 +93,7 @@ def validate_structure(
                 )
             if tuple(array.chunks) != variable.layout.chunks:
                 raise ValidationError(
-                    f"wrong chunks for {variable.name}: {array.chunks} "
-                    f"!= {variable.layout.chunks}"
+                    f"wrong chunks for {variable.name}: {array.chunks} != {variable.layout.chunks}"
                 )
             if array.attrs.get("_ARRAY_DIMENSIONS") != [
                 "valid_time",
@@ -90,7 +101,11 @@ def validate_structure(
                 "longitude",
             ]:
                 raise ValidationError(f"invalid dimension metadata for {variable.name}")
-            for time in variable.valid_times:
+            sampled_times = tuple(
+                variable.valid_times[index]
+                for index in _sample_indices(len(variable.valid_times), time_samples)
+            )
+            for time in sampled_times:
                 index = plan.valid_times.index(time)
                 stored = np.asarray(array[index, :, :])
                 physical = decode_values(stored, variable.encoding)
@@ -143,9 +158,27 @@ def validate_round_trip(
     bbox_checks = 0
     bytes_read = 0
     selected = selected_message_keys(report.messages)
+    candidates: dict[str, list[Any]] = {}
+    for meta in report.messages:
+        if meta.source_key not in selected:
+            continue
+        spec = match_message(meta)
+        if spec is not None and spec.name in direct:
+            candidates.setdefault(spec.name, []).append(meta)
+    target_keys: set[str] = set()
+    for messages in candidates.values():
+        ordered = sorted(messages, key=lambda item: (item.valid_time, item.source_key))
+        target_keys.update(
+            ordered[index].source_key
+            for index in _sample_indices(len(ordered), config.validation.time_samples)
+        )
+    target_files = {meta.file_name for meta in report.messages if meta.source_key in target_keys}
+    messages_checked = 0
     for source_file in report.source_files:
+        if source_file.name not in target_files:
+            continue
         for decoded in decoder.iter_file(report.input_dir / source_file.name):
-            if decoded.meta.source_key not in selected:
+            if decoded.meta.source_key not in target_keys:
                 continue
             spec = match_message(decoded.meta)
             if spec is None:
@@ -153,6 +186,7 @@ def validate_round_trip(
             variable = direct.get(spec.name)
             if variable is None:
                 continue
+            messages_checked += 1
             canonical = normalize_values(spec, decoded.values, decoded.meta.units)
             source_lat, source_lon, source_values = regular_grid(
                 decoded.latitudes,
@@ -226,5 +260,7 @@ def validate_round_trip(
         "point_checks": point_checks,
         "bbox_checks": bbox_checks,
         "bytes_read": bytes_read,
+        "source_files_checked": len(target_files),
+        "source_messages_checked": messages_checked,
         "random_seed": config.validation.random_seed,
     }

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import zarr
 
-from forecast_zarr.config import ChunkingConfig
+from forecast_zarr.config import ChunkingConfig, ValidationConfig
 from forecast_zarr.conversion import (
     _copy_variable,
     assemble_final_store,
@@ -22,7 +22,7 @@ from forecast_zarr.pipeline import (
     save_plan_cache,
 )
 from forecast_zarr.store import ForecastStore
-from forecast_zarr.validation import validate_structure
+from forecast_zarr.validation import validate_round_trip, validate_structure
 from tests.helpers import (
     decoded_message,
     energy_source_run,
@@ -78,6 +78,22 @@ def test_completed_ingestion_resume_does_not_decode_source_files(tmp_path: Path)
     convert_messages(config, plan, report, reader=reader)
 
     assert reader.calls == calls
+
+
+def test_round_trip_validation_samples_forecast_times(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    config = processor_config(tmp_path, run_dir).model_copy(
+        update={"validation": ValidationConfig(time_samples=1)}
+    )
+    output = run_convert(config, reader=reader)
+    report, plan = build_plan(config, reader=reader)
+    calls = reader.calls
+
+    result = validate_round_trip(output, config, plan, report, reader=reader)
+
+    assert reader.calls - calls == 1
+    assert result["source_files_checked"] == 1
+    assert result["source_messages_checked"] == len(plan.variables)
 
 
 def test_point_layout_preserves_values_masks_edges_and_2x2(tmp_path: Path) -> None:

@@ -56,6 +56,7 @@ class ValidationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     random_seed: int = 20250308
+    time_samples: int = Field(default=3, ge=1, le=24)
     point_samples: int = Field(default=24, ge=1, le=1000)
     bbox_samples: int = Field(default=4, ge=1, le=100)
 
