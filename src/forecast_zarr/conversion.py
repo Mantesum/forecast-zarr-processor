@@ -15,7 +15,13 @@ from forecast_zarr.errors import BudgetExceededError, InputContractError
 from forecast_zarr.grib import EccodesReader, GribReader
 from forecast_zarr.inspection import match_message, selected_message_keys
 from forecast_zarr.io import directory_size, read_json, write_json_atomic
-from forecast_zarr.models import ArrayLayout, InspectionReport, ProcessingPlan, VariablePlan
+from forecast_zarr.models import (
+    ArrayLayout,
+    InspectionReport,
+    ProcessingPlan,
+    SourceFile,
+    VariablePlan,
+)
 from forecast_zarr.normalization import (
     normalize_values,
     regular_grid,
@@ -81,6 +87,43 @@ def _guard_disk(config: ProcessorConfig, plan: ProcessingPlan) -> None:
         raise BudgetExceededError("free space fell below min_free_gib during conversion")
 
 
+def _convert_source_file(
+    config: ProcessorConfig,
+    report: InspectionReport,
+    source_file: SourceFile,
+    plans: dict[str, VariablePlan],
+    selected: frozenset[str],
+    processed: frozenset[str],
+    store: ForecastStore,
+    decoder: GribReader,
+) -> set[str]:
+    """Decode and write one independently chunked forecast-time source file."""
+    completed: set[str] = set()
+    for decoded in decoder.iter_file(report.input_dir / source_file.name):
+        key = f"message:{source_file.name}:{decoded.meta.message_index}"
+        if key in processed:
+            continue
+        if decoded.meta.source_key not in selected:
+            completed.add(key)
+            continue
+        spec = match_message(decoded.meta)
+        if spec is None:
+            completed.add(key)
+            continue
+        variable = plans.get(spec.name)
+        if variable is not None:
+            canonical = normalize_values(spec, decoded.values, decoded.meta.units)
+            lat, lon, values = regular_grid(
+                decoded.latitudes,
+                decoded.longitudes,
+                canonical,
+                convention=config.longitude_convention,
+            )
+            store.write_block(variable, decoded.meta.valid_time, lat, lon, values)
+        completed.add(key)
+    return completed
+
+
 def convert_messages(
     config: ProcessorConfig,
     plan: ProcessingPlan,
@@ -109,36 +152,34 @@ def convert_messages(
         file_message_keys.setdefault(meta.file_name, set()).add(
             f"message:{meta.file_name}:{meta.message_index}"
         )
-    for source_file in report.source_files:
-        expected_keys = file_message_keys.get(source_file.name, set())
-        if expected_keys and expected_keys <= processed:
-            continue
-        for decoded in decoder.iter_file(report.input_dir / source_file.name):
-            key = f"message:{source_file.name}:{decoded.meta.message_index}"
-            if key in processed:
-                continue
-            if decoded.meta.source_key not in selected:
-                processed.add(key)
-                continue
-            spec = match_message(decoded.meta)
-            if spec is None:
-                processed.add(key)
-                continue
-            variable = plans.get(spec.name)
-            if variable is not None:
-                canonical = normalize_values(spec, decoded.values, decoded.meta.units)
-                lat, lon, values = regular_grid(
-                    decoded.latitudes,
-                    decoded.longitudes,
-                    canonical,
-                    convention=config.longitude_convention,
-                )
-                store.write_block(variable, decoded.meta.valid_time, lat, lon, values)
-            processed.add(key)
-        # Rewriting a partially processed source file is idempotent, so one durable
-        # checkpoint and disk scan per file is sufficient and avoids quadratic I/O.
-        _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
-        _guard_disk(config, plan)
+    pending = [
+        source_file
+        for source_file in report.source_files
+        if not file_message_keys.get(source_file.name, set()) <= processed
+    ]
+    completed_files = 0
+    snapshot = frozenset(processed)
+    with ThreadPoolExecutor(max_workers=config.runtime.max_workers) as executor:
+        futures = [
+            executor.submit(
+                _convert_source_file,
+                config,
+                report,
+                source_file,
+                plans,
+                selected,
+                snapshot,
+                store,
+                decoder,
+            )
+            for source_file in pending
+        ]
+        for future in as_completed(futures):
+            processed.update(future.result())
+            completed_files += 1
+            _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
+            if completed_files % 16 == 0:
+                _guard_disk(config, plan)
     _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
     _guard_disk(config, plan)
     return store

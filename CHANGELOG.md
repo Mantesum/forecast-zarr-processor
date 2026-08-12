@@ -2,6 +2,15 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.12] - 2026-08-12
+
+### Changed
+
+- Decode and write independent forecast-time ingestion files concurrently according to
+  `runtime.max_workers`.
+- Retain a durable checkpoint after every completed source file while limiting expensive
+  full staging-directory disk scans to every 16 files and the final boundary.
+
 ## [0.4.11] - 2026-08-12
 
 ### Fixed
