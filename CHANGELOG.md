@@ -2,6 +2,14 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.10] - 2026-08-12
+
+### Changed
+
+- Materialize each encoded variable once before point-layout rechunking, eliminating
+  repeated overlapping reads of the coarse ingestion chunks for every 32x32 API tile.
+- Include concurrently materialized variables in the conservative memory budget.
+
 ## [0.4.9] - 2026-08-12
 
 ### Changed

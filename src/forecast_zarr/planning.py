@@ -116,7 +116,17 @@ def create_plan(config: ProcessorConfig, report: InspectionReport) -> Processing
     estimated_temp = estimated_output
     max_message_cells = max(meta.ni * meta.nj for meta in report.messages)
     max_shard = max(item.layout.uncompressed_shard_bytes for item in variables)
-    peak_memory = max_message_cells * 34 + max_shard * 2 + 64 * 1024 * 1024
+    variable_bytes = sorted(
+        (
+            cells * len(valid_times) * (2 if item.encoding.dtype == "int16" else 4)
+            for item in variables
+        ),
+        reverse=True,
+    )
+    parallel_materialization = sum(variable_bytes[: config.runtime.max_workers])
+    peak_memory = (
+        max_message_cells * 34 + max_shard * 2 + parallel_materialization + 64 * 1024 * 1024
+    )
     free = shutil.disk_usage(_existing_ancestor(config.output_root)).free
     existing = _tree_size(config.output_root)
     projected_free = free - estimated_output - estimated_temp

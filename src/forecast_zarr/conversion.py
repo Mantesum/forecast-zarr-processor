@@ -178,6 +178,9 @@ def _copy_variable(
     target = ForecastStore.open(assembly_path, plan)
     source_array = source.array(variable)
     target_array = target.array(variable)
+    # Read each ingestion chunk once. Reading every small destination tile directly
+    # from the coarser source layout causes massive overlapping read amplification.
+    values = np.asarray(source_array[:])
     _, y_chunk, x_chunk = variable.layout.chunks
     written = 0
     guarded_plan = plan.model_copy(update={"staging_path": assembly_path})
@@ -185,7 +188,7 @@ def _copy_variable(
         y1 = min(target_array.shape[1], y0 + y_chunk)
         for x0 in range(0, target_array.shape[2], x_chunk):
             x1 = min(target_array.shape[2], x0 + x_chunk)
-            target_array[:, y0:y1, x0:x1] = source_array[:, y0:y1, x0:x1]
+            target_array[:, y0:y1, x0:x1] = values[:, y0:y1, x0:x1]
             written += 1
             if written % 64 == 0:
                 _guard_disk(config, guarded_plan)
