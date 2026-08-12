@@ -17,10 +17,9 @@ from forecast_zarr.io import read_json
 from forecast_zarr.logging import configure_logging, logger
 from forecast_zarr.models import ProcessingPlan
 from forecast_zarr.pipeline import (
-    build_plan,
     load_plan_cache,
+    prepare_plan,
     run_convert,
-    save_plan_cache,
 )
 from forecast_zarr.status import status_report
 from forecast_zarr.validation import validate_structure
@@ -78,8 +77,7 @@ def plan(
     """Print the complete storage and budget plan without writing Zarr."""
     try:
         loaded = load_config(config)
-        report, result = build_plan(loaded)
-        save_plan_cache(config, loaded, report, result)
+        _report, result = prepare_plan(config, loaded)
         typer.echo(result.model_dump_json(indent=2))
         if not result.budget.passes:
             raise typer.Exit(code=5)

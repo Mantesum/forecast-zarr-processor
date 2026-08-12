@@ -18,6 +18,7 @@ from forecast_zarr.errors import InputContractError, ValidationError
 from forecast_zarr.pipeline import (
     build_plan,
     load_plan_cache,
+    prepare_plan,
     run_convert,
     save_plan_cache,
 )
@@ -75,6 +76,20 @@ def test_plan_cache_reuses_unchanged_inspection_and_rejects_changed_manifest(
     document["files"][0]["checksum"] = "sha256:" + "0" * 64
     report.manifest_path.write_text(json.dumps(document), encoding="utf-8")
     assert load_plan_cache(config_path, config) is None
+
+
+def test_prepare_plan_does_not_reinspect_valid_cache(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    config = processor_config(tmp_path, run_dir)
+    config_path = tmp_path / "job.yaml"
+    config_path.write_text("test", encoding="utf-8")
+    first = prepare_plan(config_path, config, reader=reader)
+    calls = reader.calls
+
+    second = prepare_plan(config_path, config, reader=reader)
+
+    assert reader.calls == calls
+    assert second[1].dataset_id == first[1].dataset_id
 
 
 def test_completed_ingestion_resume_does_not_decode_source_files(tmp_path: Path) -> None:

@@ -102,6 +102,20 @@ def build_plan(
     return report, plan
 
 
+def prepare_plan(
+    config_path: Path,
+    config: ProcessorConfig,
+    *,
+    reader: GribReader | None = None,
+) -> tuple[InspectionReport, ProcessingPlan]:
+    """Reuse a valid cached plan or build and persist one for a new source identity."""
+    prepared = load_plan_cache(config_path, config)
+    if prepared is None:
+        prepared = build_plan(config, reader=reader)
+    save_plan_cache(config_path, config, *prepared)
+    return prepared
+
+
 def _critical_metadata_checksum(path: Path) -> str:
     documents: list[tuple[str, str]] = []
     for item in sorted(path.rglob("zarr.json")):

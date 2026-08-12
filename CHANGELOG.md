@@ -2,6 +2,13 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.9] - 2026-08-12
+
+### Changed
+
+- Let the `plan` command reuse and refresh a valid cached plan, making orchestrator retries
+  skip the expensive GRIB inspection as well as the conversion command.
+
 ## [0.4.8] - 2026-08-12
 
 ### Fixed
