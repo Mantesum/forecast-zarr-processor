@@ -28,6 +28,60 @@ from forecast_zarr.planning import create_plan, enforce_budget
 from forecast_zarr.validation import validate_round_trip, validate_structure
 
 
+def plan_cache_path(config_path: Path) -> Path:
+    """Return the private cache shared by the plan and convert CLI invocations."""
+    return config_path.with_name(f"{config_path.name}.plan-cache.json")
+
+
+def _config_hash(config: ProcessorConfig) -> str:
+    return sha256_json(config.model_dump(mode="json"))
+
+
+def save_plan_cache(
+    config_path: Path,
+    config: ProcessorConfig,
+    report: InspectionReport,
+    plan: ProcessingPlan,
+) -> None:
+    write_json_atomic(
+        plan_cache_path(config_path),
+        {
+            "schema_version": "1.0",
+            "config_hash": _config_hash(config),
+            "report": report.model_dump(mode="json"),
+            "plan": plan.model_dump(mode="json"),
+        },
+    )
+
+
+def load_plan_cache(
+    config_path: Path, config: ProcessorConfig
+) -> tuple[InspectionReport, ProcessingPlan] | None:
+    """Reuse a plan only while its config, manifest, and source file sizes are unchanged."""
+    path = plan_cache_path(config_path)
+    if not path.is_file():
+        return None
+    raw = read_json(path)
+    if not isinstance(raw, dict) or raw.get("config_hash") != _config_hash(config):
+        return None
+    try:
+        report = InspectionReport.model_validate(raw.get("report"))
+        plan = ProcessingPlan.model_validate(raw.get("plan"))
+    except ValueError:
+        return None
+    if not report.manifest_path.is_file():
+        return None
+    if sha256_file(report.manifest_path) != report.manifest_hash:
+        return None
+    if any(
+        not (report.input_dir / item.name).is_file()
+        or (report.input_dir / item.name).stat().st_size != item.size
+        for item in report.source_files
+    ):
+        return None
+    return report, plan
+
+
 def build_plan(
     config: ProcessorConfig, *, reader: GribReader | None = None
 ) -> tuple[InspectionReport, ProcessingPlan]:
@@ -53,12 +107,17 @@ def _software_versions(reader: GribReader) -> dict[str, str]:
     }
 
 
-def run_convert(config: ProcessorConfig, *, reader: GribReader | None = None) -> Path:
+def run_convert(
+    config: ProcessorConfig,
+    *,
+    reader: GribReader | None = None,
+    prepared: tuple[InspectionReport, ProcessingPlan] | None = None,
+) -> Path:
     """Execute all stages and atomically expose only a READY store."""
     decoder = reader or EccodesReader()
     started = datetime.now(UTC)
     clock = time.perf_counter()
-    report, plan = build_plan(config, reader=decoder)
+    report, plan = prepared or build_plan(config, reader=decoder)
     enforce_budget(plan)
     if plan.output_path.exists():
         ready_path = plan.output_path / "READY.json"

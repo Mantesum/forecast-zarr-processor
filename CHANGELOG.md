@@ -2,6 +2,14 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.4] - 2026-08-12
+
+### Changed
+
+- Cache the validated inspection report produced by `plan` and reuse it in `convert`
+  when the configuration, manifest hash, and all source file sizes are unchanged. This
+  removes a duplicate full GRIB inspection from orchestrated runs.
+
 ## [0.4.3] - 2026-08-12
 
 ### Changed

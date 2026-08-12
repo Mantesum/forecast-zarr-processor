@@ -15,7 +15,12 @@ from forecast_zarr.conversion import (
     convert_messages,
 )
 from forecast_zarr.errors import InputContractError, ValidationError
-from forecast_zarr.pipeline import build_plan, run_convert
+from forecast_zarr.pipeline import (
+    build_plan,
+    load_plan_cache,
+    run_convert,
+    save_plan_cache,
+)
 from forecast_zarr.store import ForecastStore
 from forecast_zarr.validation import validate_structure
 from tests.helpers import (
@@ -42,6 +47,25 @@ def test_end_to_end_writes_ready_zarr_v3_and_is_idempotent(tmp_path: Path) -> No
     assert "derived" not in root
     assert validate_structure(output, require_ready=True)["zarr_format"] == 3
     assert run_convert(config, reader=reader) == output
+
+
+def test_plan_cache_reuses_unchanged_inspection_and_rejects_changed_manifest(
+    tmp_path: Path,
+) -> None:
+    run_dir, reader = source_run(tmp_path)
+    config = processor_config(tmp_path, run_dir)
+    config_path = tmp_path / "job.yaml"
+    config_path.write_text("test", encoding="utf-8")
+    report, plan = build_plan(config, reader=reader)
+    save_plan_cache(config_path, config, report, plan)
+
+    cached = load_plan_cache(config_path, config)
+    assert cached is not None
+    assert cached[0].input_hash == report.input_hash
+    assert cached[1].dataset_id == plan.dataset_id
+
+    report.manifest_path.write_text("{}", encoding="utf-8")
+    assert load_plan_cache(config_path, config) is None
 
 
 def test_point_layout_preserves_values_masks_edges_and_2x2(tmp_path: Path) -> None:

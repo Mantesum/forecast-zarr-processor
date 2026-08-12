@@ -16,7 +16,12 @@ from forecast_zarr.inspection import inspect_run
 from forecast_zarr.io import read_json
 from forecast_zarr.logging import configure_logging, logger
 from forecast_zarr.models import ProcessingPlan
-from forecast_zarr.pipeline import build_plan, run_convert
+from forecast_zarr.pipeline import (
+    build_plan,
+    load_plan_cache,
+    run_convert,
+    save_plan_cache,
+)
 from forecast_zarr.status import status_report
 from forecast_zarr.validation import validate_structure
 
@@ -73,7 +78,8 @@ def plan(
     """Print the complete storage and budget plan without writing Zarr."""
     try:
         loaded = load_config(config)
-        _, result = build_plan(loaded)
+        report, result = build_plan(loaded)
+        save_plan_cache(config, loaded, report, result)
         typer.echo(result.model_dump_json(indent=2))
         if not result.budget.passes:
             raise typer.Exit(code=5)
@@ -88,7 +94,7 @@ def convert(
     """Convert, validate, and atomically publish one immutable local store."""
     try:
         loaded = load_config(config)
-        output = run_convert(loaded)
+        output = run_convert(loaded, prepared=load_plan_cache(config, loaded))
         typer.echo(json.dumps({"status": "ready", "output": str(output)}, indent=2))
     except ProcessorError as error:
         _fail(error)
