@@ -2,6 +2,12 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.2] - 2026-08-12
+
+### Fixed
+
+- Keep the runtime `forecast_zarr.__version__` metadata in sync with the package release.
+
 ## [0.4.1] - 2026-08-12
 
 ### Fixed
