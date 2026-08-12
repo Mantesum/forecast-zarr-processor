@@ -168,6 +168,7 @@ def run_convert(
         plan,
         require_ready=False,
         time_samples=config.validation.time_samples,
+        spatial_samples=config.validation.point_samples,
     )
     round_trip = validate_round_trip(plan.staging_path, config, plan, report, reader=decoder)
     metadata_checksum = _critical_metadata_checksum(plan.staging_path)

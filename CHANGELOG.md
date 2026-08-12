@@ -2,6 +2,14 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.13] - 2026-08-12
+
+### Changed
+
+- Check physical ranges through deterministic spatial samples instead of materializing full
+  global time slices from the point-optimized layout; full metadata, dimensions, chunks,
+  and all arrays remain structurally validated.
+
 ## [0.4.12] - 2026-08-12
 
 ### Changed

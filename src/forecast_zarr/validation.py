@@ -40,6 +40,7 @@ def validate_structure(
     *,
     require_ready: bool = True,
     time_samples: int = 3,
+    spatial_samples: int = 24,
 ) -> dict[str, Any]:
     """Validate Zarr v3 metadata, coordinates, dimensions, and physical ranges."""
     metadata_path = path / "zarr.json"
@@ -105,9 +106,14 @@ def validate_structure(
                 variable.valid_times[index]
                 for index in _sample_indices(len(variable.valid_times), time_samples)
             )
+            sample_count = min(spatial_samples, latitude.size, longitude.size)
+            sampled_y = _sample_indices(latitude.size, sample_count)
+            sampled_x = _sample_indices(longitude.size, sample_count)
             for time in sampled_times:
                 index = plan.valid_times.index(time)
-                stored = np.asarray(array[index, :, :])
+                stored = np.asarray(
+                    [array[index, y, x] for y, x in zip(sampled_y, sampled_x, strict=True)]
+                )
                 physical = decode_values(stored, variable.encoding)
                 if np.isnan(physical).all():
                     if variable.required:
