@@ -104,7 +104,15 @@ def convert_messages(
         _save_checkpoint(plan.staging_path, plan.dataset_id, processed)
     plans = {item.name: item for item in plan.variables}
     selected = selected_message_keys(report.messages)
+    file_message_keys: dict[str, set[str]] = {}
+    for meta in report.messages:
+        file_message_keys.setdefault(meta.file_name, set()).add(
+            f"message:{meta.file_name}:{meta.message_index}"
+        )
     for source_file in report.source_files:
+        expected_keys = file_message_keys.get(source_file.name, set())
+        if expected_keys and expected_keys <= processed:
+            continue
         for decoded in decoder.iter_file(report.input_dir / source_file.name):
             key = f"message:{source_file.name}:{decoded.meta.message_index}"
             if key in processed:

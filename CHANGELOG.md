@@ -2,6 +2,13 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.6] - 2026-08-12
+
+### Changed
+
+- Skip opening and decoding a source GRIB file when every inspected message is already
+  present in the resumable ingestion checkpoint.
+
 ## [0.4.5] - 2026-08-12
 
 ### Changed

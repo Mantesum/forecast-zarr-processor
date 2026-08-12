@@ -68,6 +68,18 @@ def test_plan_cache_reuses_unchanged_inspection_and_rejects_changed_manifest(
     assert load_plan_cache(config_path, config) is None
 
 
+def test_completed_ingestion_resume_does_not_decode_source_files(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    config = processor_config(tmp_path, run_dir)
+    report, plan = build_plan(config, reader=reader)
+    convert_messages(config, plan, report, reader=reader)
+    calls = reader.calls
+
+    convert_messages(config, plan, report, reader=reader)
+
+    assert reader.calls == calls
+
+
 def test_point_layout_preserves_values_masks_edges_and_2x2(tmp_path: Path) -> None:
     run_dir, reader = source_run(tmp_path)
     # One missing source cell exercises packed fill/mask semantics through rechunking.
