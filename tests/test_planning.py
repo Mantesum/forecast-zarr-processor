@@ -15,6 +15,15 @@ def test_layout_targets_bounded_shards() -> None:
     assert all(shard >= chunk for shard, chunk in zip(layout.shards, layout.chunks, strict=True))
 
 
+def test_point_layout_is_full_time_and_32_by_32() -> None:
+    config = ChunkingConfig(access_pattern="point", point_spatial_chunk=32)
+    layout = choose_layout((161, 721, 1440), 2, config)
+    assert layout.chunks == (161, 32, 32)
+    assert layout.shards == layout.chunks
+    assert layout.uncompressed_shard_bytes == 161 * 32 * 32 * 2
+    assert layout.chunks != (1, 360, 360)
+
+
 def test_plan_is_deterministic_and_includes_every_source_field(tmp_path: Path) -> None:
     run_dir, reader = source_run(tmp_path)
     config = processor_config(tmp_path, run_dir).model_copy(

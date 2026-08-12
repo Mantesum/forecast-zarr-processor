@@ -13,7 +13,11 @@ import zarr
 
 from forecast_zarr import __version__
 from forecast_zarr.config import ProcessorConfig
-from forecast_zarr.conversion import convert_messages
+from forecast_zarr.conversion import (
+    assemble_final_store,
+    convert_messages,
+    remove_ingestion_staging,
+)
 from forecast_zarr.errors import InputContractError
 from forecast_zarr.grib import EccodesReader, GribReader
 from forecast_zarr.hashing import sha256_file, sha256_json
@@ -67,6 +71,7 @@ def run_convert(config: ProcessorConfig, *, reader: GribReader | None = None) ->
         )
     write_started = time.perf_counter()
     convert_messages(config, plan, report, reader=decoder)
+    assemble_final_store(config, plan, report)
     conversion_seconds = time.perf_counter() - write_started
     structural = validate_structure(plan.staging_path, plan, require_ready=False)
     round_trip = validate_round_trip(plan.staging_path, config, plan, report, reader=decoder)
@@ -152,4 +157,5 @@ def run_convert(config: ProcessorConfig, *, reader: GribReader | None = None) ->
         actual_size = measured_size
     plan.output_path.parent.mkdir(parents=True, exist_ok=True)
     plan.staging_path.replace(plan.output_path)
+    remove_ingestion_staging(plan)
     return plan.output_path

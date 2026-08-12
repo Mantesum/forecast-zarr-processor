@@ -11,8 +11,16 @@ from forecast_zarr.models import ArrayLayout
 def choose_layout(
     shape: tuple[int, int, int], itemsize: int, config: ChunkingConfig
 ) -> ArrayLayout:
-    """Target 4-16 MiB shards while retaining point and bbox locality."""
+    """Choose either the legacy map layout or one object per point-friendly tile."""
     times, latitudes, longitudes = shape
+    if config.access_pattern == "point":
+        spatial = config.point_spatial_chunk
+        chunks = (times, min(latitudes, spatial), min(longitudes, spatial))
+        return ArrayLayout(
+            chunks=chunks,
+            shards=chunks,
+            uncompressed_shard_bytes=math.prod(chunks) * itemsize,
+        )
     time_chunk = min(times, config.time_chunk)
     time_shard = min(times, max(time_chunk, config.time_shard))
     target_bytes = int(config.target_shard_mib * 1024 * 1024)

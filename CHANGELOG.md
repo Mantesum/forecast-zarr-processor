@@ -2,6 +2,17 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.0] - 2026-08-12
+
+### Added
+
+- ProjectEOL point-access layout with full-time 32x32 chunks and safe two-phase rechunking.
+- API-host benchmark for five 2x2 full-field point forecasts, p50/p95, cold cache, and cached API.
+
+### Changed
+
+- Structural validation now enforces the planned physical chunk shape before publication.
+
 ## [0.3.2] - 2026-08-01
 
 ### Fixed

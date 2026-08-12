@@ -48,6 +48,8 @@ class ChunkingConfig(BaseModel):
     min_spatial_chunk: int = Field(default=90, ge=16)
     max_spatial_chunk: int = Field(default=360, ge=32)
     max_spatial_shard: int = Field(default=720, ge=64)
+    access_pattern: Literal["map", "point"] = "map"
+    point_spatial_chunk: int = Field(default=32, ge=24, le=48)
 
 
 class ValidationConfig(BaseModel):

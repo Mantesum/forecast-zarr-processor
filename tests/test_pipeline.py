@@ -5,9 +5,12 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 import zarr
 
-from forecast_zarr.pipeline import run_convert
+from forecast_zarr.config import ChunkingConfig
+from forecast_zarr.errors import InputContractError, ValidationError
+from forecast_zarr.pipeline import build_plan, run_convert
 from forecast_zarr.validation import validate_structure
 from tests.helpers import (
     decoded_message,
@@ -33,6 +36,69 @@ def test_end_to_end_writes_ready_zarr_v3_and_is_idempotent(tmp_path: Path) -> No
     assert "derived" not in root
     assert validate_structure(output, require_ready=True)["zarr_format"] == 3
     assert run_convert(config, reader=reader) == output
+
+
+def test_point_layout_preserves_values_masks_edges_and_2x2(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    # One missing source cell exercises packed fill/mask semantics through rechunking.
+    reader.messages["gfs-2025010100-f003.grib2"][0].values[-1] = np.nan
+    config = processor_config(tmp_path, run_dir).model_copy(
+        update={"chunking": ChunkingConfig(access_pattern="point", point_spatial_chunk=32)}
+    )
+    output = run_convert(config, reader=reader)
+    root = zarr.open_group(output, mode="r", zarr_format=3)
+    array = root["surface"]["air_temperature_2m"]
+
+    assert array.chunks == (2, 3, 4)
+    block = np.asarray(array[:, -2:, -2:])
+    assert block.shape == (2, 2, 2)
+    assert block[1, -1, -1] == array.attrs["_FillValue"]
+    assert np.isfinite(block[0]).all()
+
+
+def test_layout_validation_rejects_legacy_point_chunks(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    config = processor_config(tmp_path, run_dir).model_copy(
+        update={"chunking": ChunkingConfig(access_pattern="point", point_spatial_chunk=32)}
+    )
+    output = run_convert(config, reader=reader)
+    _, plan = build_plan(config, reader=reader)
+    variable = plan.variables[0]
+    legacy = variable.layout.model_copy(update={"chunks": (1, 3, 4), "shards": (1, 3, 4)})
+    bad_plan = plan.model_copy(
+        update={"variables": (variable.model_copy(update={"layout": legacy}), *plan.variables[1:])}
+    )
+    with pytest.raises(ValidationError, match="wrong chunks"):
+        validate_structure(output, bad_plan)
+
+
+def test_failed_validation_never_publishes_ready_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir, reader = source_run(tmp_path)
+    config = processor_config(tmp_path, run_dir)
+    _, plan = build_plan(config, reader=reader)
+
+    def fail(*args: object, **kwargs: object) -> dict[str, object]:
+        raise ValidationError("injected failure")
+
+    monkeypatch.setattr("forecast_zarr.pipeline.validate_round_trip", fail)
+    with pytest.raises(ValidationError, match="injected failure"):
+        run_convert(config, reader=reader)
+    assert not plan.output_path.exists()
+    assert not (plan.staging_path / "READY.json").exists()
+
+
+def test_incomplete_source_cycle_is_rejected_before_staging(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["status"] = "downloading"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    config = processor_config(tmp_path, run_dir)
+    with pytest.raises(InputContractError):
+        run_convert(config, reader=reader)
+    assert not (config.output_root / ".staging").exists()
 
 
 def test_processing_manifest_has_portable_source_references(tmp_path: Path) -> None:

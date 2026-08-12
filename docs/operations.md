@@ -17,6 +17,58 @@ For each new 00, 06, 12, or 18 UTC GFS run:
 7. Source GRIB becomes eligible for retention cleanup only after validation and backup policy
    requirements are satisfied.
 
+For the ProjectEOL point profile step 4 has two private phases: resumable time-slice ingestion
+and spatial-tile rechunking. Budgeting therefore reserves space for both representations. Old
+`.ingest.zarr` or `.rechunking.zarr` directories are not publishable and must never be selected
+by an API.
+
+## Migration, current pointer, and rollback
+
+Build a new cycle with `configs/gfs-projecteol.yaml` in a non-production output root first.
+Run `forecast-zarr validate` and the NFS benchmark below, then let the existing catalogue/current
+publisher select it only if `READY.json` exists, its `dataset_id` matches the directory, and the
+source and critical-metadata checksums match. This repository publishes immutable dataset
+directories; it intentionally does not own or change ProjectEOL's external `current` pointer.
+That pointer must continue to be switched atomically by its existing owner after these checks.
+
+Rollback is only a pointer change to the previous complete immutable cycle. Do not overwrite or
+delete the rejected cycle, the preceding cycle, or source GRIB2 during investigation. The point
+layout uses the same Zarr paths and decoding metadata, so Weather API needs no path/name change;
+it should continue opening `current` once per request and reading `[:, y:y+2, x:x+2]` directly
+over NFS.
+
+## Reproducible API-host benchmark
+
+Run from the Django/API host against its real NFS mount. The command reads every three-dimensional
+forecast field, all valid times, and a 2x2 interpolation block at Moscow, Singapore, Sydney,
+San Francisco, and Cape Town. It reports per-point and aggregate p50/p95 plus logical bytes and
+an object-count estimate derived from chunk geometry.
+
+```bash
+uv run forecast-zarr benchmark-api /nfs/forecast/path/to/DATASET_ID.zarr --iterations 7
+```
+
+For genuinely cold page-cache measurements use a dedicated benchmark host or maintenance window;
+the option requires Linux root and drops the host page cache before every sample:
+
+```bash
+sudo uv run forecast-zarr benchmark-api /nfs/forecast/path/to/DATASET_ID.zarr \
+  --iterations 7 --cold-cache
+```
+
+To measure cached Weather API/Redis responses as well, pass its real URL template. One warm-up
+request per point is excluded, then the cached calls are measured:
+
+```bash
+uv run forecast-zarr benchmark-api /nfs/forecast/path/to/DATASET_ID.zarr \
+  --iterations 7 \
+  --api-url-template 'https://api.example/weather?lat={lat}&lon={lon}'
+```
+
+Capture `nfsstat -c` and `/proc/self/io` before and after the run when exact client RPC and byte
+counters are required; the portable benchmark deliberately labels its chunk-object count as an
+estimate rather than pretending it is a kernel NFS counter.
+
 Do not point the processor at a moving `latest` directory. Persist the immutable run timestamp
 and request hash supplied by ingest.
 

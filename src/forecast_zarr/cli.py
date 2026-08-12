@@ -8,6 +8,7 @@ from typing import Annotated
 
 import typer
 
+from forecast_zarr.api_benchmark import benchmark_point_store_json
 from forecast_zarr.benchmark import benchmark_json, load_benchmark_config
 from forecast_zarr.config import VARIABLE_PROFILES, ProcessorConfig, load_config
 from forecast_zarr.errors import ProcessorError
@@ -119,6 +120,29 @@ def benchmark(
         typer.echo(benchmark_json(load_benchmark_config(config)))
     except ProcessorError as error:
         _fail(error)
+
+
+@app.command("benchmark-api")
+def benchmark_api(
+    store: Annotated[Path, typer.Argument(exists=True, file_okay=False, readable=True)],
+    iterations: Annotated[int, typer.Option(min=5)] = 7,
+    cold_cache: Annotated[
+        bool, typer.Option(help="Drop Linux page cache before each sample.")
+    ] = False,
+    api_url_template: Annotated[
+        str | None,
+        typer.Option(help="URL containing {lat} and {lon}; cached calls are timed after warmup."),
+    ] = None,
+) -> None:
+    """Benchmark full-field point reads from a real NFS-mounted store."""
+    typer.echo(
+        benchmark_point_store_json(
+            store=store,
+            iterations=iterations,
+            cold_cache=cold_cache,
+            api_url_template=api_url_template,
+        )
+    )
 
 
 @app.command()

@@ -59,3 +59,17 @@ unsafe ranges fall back to float32. `lossless` always stores decoded float32 val
 1.1 records input hashes, files, variables, valid times, software versions, layouts, encoding,
 measured size, validation results, and the complete processing plan. `READY.json` is written
 last and is the publication marker.
+
+## ProjectEOL point layout
+
+`configs/gfs-projecteol.yaml` uses `chunking.access_pattern: point`. Every forecast array keeps
+its existing group, name, dtype, attributes, and dimension order, but its physical chunk and
+shard shape is `(len(valid_time), 32, 32)`. At 161 times an `int16` tile is 329,728 bytes before
+compression. A full-time 2x2 selection normally touches one object per field (up to four when
+the interpolation cell crosses chunk boundaries), instead of about 161 time-slice objects.
+
+The processor never writes incoming one-time slices into these full-time chunks. It first
+writes a private `.staging/<dataset_id>.ingest.zarr` with time-one chunks, then copies one
+complete `(valid_time, spatial tile)` into a separate rechunking store. The rechunked store is
+structurally and semantically validated before `READY.json` is created and the directory is
+atomically renamed into its immutable published path.

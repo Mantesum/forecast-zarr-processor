@@ -79,6 +79,11 @@ def validate_structure(
                 raise ValidationError(
                     f"wrong dimensions for {variable.name}: {array.shape} != {expected_shape}"
                 )
+            if tuple(array.chunks) != variable.layout.chunks:
+                raise ValidationError(
+                    f"wrong chunks for {variable.name}: {array.chunks} "
+                    f"!= {variable.layout.chunks}"
+                )
             if array.attrs.get("_ARRAY_DIMENSIONS") != [
                 "valid_time",
                 "latitude",

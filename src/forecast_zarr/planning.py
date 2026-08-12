@@ -111,7 +111,9 @@ def create_plan(config: ProcessorConfig, report: InspectionReport) -> Processing
         for item in variables
     )
     estimated_output = int(raw_bytes * 0.9) + 8 * 1024 * 1024
-    estimated_temp = min(256 * 1024 * 1024, max(32 * 1024 * 1024, estimated_output // 50))
+    # Rechunk publication temporarily holds the resumable ingestion representation
+    # alongside the final store. Compression varies, so reserve one additional output.
+    estimated_temp = estimated_output
     max_message_cells = max(meta.ni * meta.nj for meta in report.messages)
     max_shard = max(item.layout.uncompressed_shard_bytes for item in variables)
     peak_memory = max_message_cells * 34 + max_shard * 2 + 64 * 1024 * 1024
@@ -138,7 +140,7 @@ def create_plan(config: ProcessorConfig, report: InspectionReport) -> Processing
         "crop_to_manifest_regions": config.crop_to_manifest_regions,
         "chunking": config.chunking.model_dump(mode="json"),
         "compression_level": config.compression_level,
-        "processor_schema": "2.0",
+        "processor_schema": "3.0",
     }
     dataset_id = sha256_json(identity)[:24]
     run = report.run_utc.strftime("%Y%m%dT%H%M%SZ")

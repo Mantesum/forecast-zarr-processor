@@ -107,6 +107,11 @@ publication, the program validates structure and sampled values against GRIB. On
 it write `READY.json` and atomically expose the final store. Repeating the same input and
 effective configuration produces the same dataset ID.
 
+The ProjectEOL profile additionally performs a safe staging-to-final rechunk into full-time
+32x32 spatial tiles for low-latency point forecasts over NFS. See the
+[operations guide](docs/operations.md#migration-current-pointer-and-rollback) for migration,
+rollback, and API-host benchmark commands.
+
 Default limits target a modest Ubuntu VM: two workers, 8 GiB memory, 40 GiB managed storage,
 26 GiB maximum output, 6 GiB temporary data, and at least 10 GiB remaining disk space. Review
 these values for a global ten-day `full_energy` run before regular scheduling.
