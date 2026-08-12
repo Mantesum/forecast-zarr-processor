@@ -21,6 +21,22 @@ def test_actual_forecast_ingest_contract_loads(tmp_path: Path) -> None:
     assert len(digest) == 64
 
 
+def test_input_identity_ignores_recheck_timestamps(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    config = processor_config(tmp_path, run_dir)
+    first = inspect_run(config, reader=reader)
+    path = run_dir / "manifest.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["operations"] = {"rechecked_at": "2026-08-12T14:00:00Z"}
+    document["files"][0]["completed_at"] = "2026-08-12T14:00:00Z"
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    second = inspect_run(config, reader=reader)
+
+    assert second.manifest_hash != first.manifest_hash
+    assert second.input_hash == first.input_hash
+
+
 def test_checksum_mismatch_is_rejected(tmp_path: Path) -> None:
     run_dir, _ = source_run(tmp_path)
     first = next(run_dir.glob("*.grib2"))

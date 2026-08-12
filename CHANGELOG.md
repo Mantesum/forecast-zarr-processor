@@ -2,6 +2,16 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.8] - 2026-08-12
+
+### Fixed
+
+- Keep the source input identity stable when downloader rechecks only change volatile
+  manifest timestamps or operation metadata, while still invalidating it for changed GRIB
+  checksums, field contracts, forecast steps, or regions.
+- Reuse a cached plan after such a recheck and refresh its raw manifest checksum before
+  writing provenance.
+
 ## [0.4.7] - 2026-08-12
 
 ### Changed

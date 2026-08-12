@@ -17,6 +17,7 @@ from forecast_zarr.models import (
     GridInventory,
     InspectionReport,
     MessageMeta,
+    SourceManifest,
     VariableInventory,
 )
 from forecast_zarr.normalization import (
@@ -27,6 +28,47 @@ from forecast_zarr.normalization import (
     normalize_values,
     regular_grid,
 )
+
+
+def source_input_hash(manifest: SourceManifest) -> str:
+    """Hash only source semantics, excluding volatile retry and completion metadata."""
+    files = []
+    for item in manifest.files:
+        fields = sorted(
+            (field.model_dump(mode="json") for field in manifest.expected_fields(item.name)),
+            key=lambda value: (
+                str(value["short_name"]),
+                str(value["type_of_level"]),
+                str(value["level"]),
+                str(value.get("step_type")),
+                str(value.get("discipline")),
+                str(value.get("parameter_category")),
+                str(value.get("parameter_number")),
+            ),
+        )
+        files.append(
+            {
+                "name": item.name,
+                "size": item.size,
+                "checksum": item.checksum,
+                "forecast_step": item.forecast_step,
+                "expected_parameters": sorted(manifest.expected_parameters(item.name)),
+                "expected_fields": fields,
+            }
+        )
+    return sha256_json(
+        {
+            "schema_major": manifest.schema_version.split(".", maxsplit=1)[0],
+            "provider": manifest.provider,
+            "model": manifest.model,
+            "run_utc": manifest.run_utc.isoformat(),
+            "files": files,
+            "variables": manifest.variables,
+            "forecast_steps": manifest.forecast_steps,
+            "regions": manifest.regions,
+            "spatial_method": manifest.spatial_method,
+        }
+    )
 
 
 def selected_message_keys(messages: tuple[MessageMeta, ...]) -> frozenset[str]:
@@ -273,12 +315,7 @@ def inspect_run(
     available = {item.name for item in inventory}
     requested_sources = {name for name in config.variables if name in SPECS_BY_NAME}
     missing = tuple(sorted(requested_sources - available))
-    input_hash = sha256_json(
-        {
-            "manifest": manifest_hash,
-            "files": [(item.name, item.checksum) for item in manifest.files],
-        }
-    )
+    input_hash = source_input_hash(manifest)
     return InspectionReport(
         input_dir=input_dir,
         manifest_path=manifest_path,

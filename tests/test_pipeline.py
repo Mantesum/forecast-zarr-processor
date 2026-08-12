@@ -64,7 +64,16 @@ def test_plan_cache_reuses_unchanged_inspection_and_rejects_changed_manifest(
     assert cached[0].input_hash == report.input_hash
     assert cached[1].dataset_id == plan.dataset_id
 
-    report.manifest_path.write_text("{}", encoding="utf-8")
+    document = json.loads(report.manifest_path.read_text(encoding="utf-8"))
+    document["operations"] = {"rechecked_at": "2026-08-12T14:00:00Z"}
+    document["files"][0]["completed_at"] = "2026-08-12T14:00:00Z"
+    report.manifest_path.write_text(json.dumps(document), encoding="utf-8")
+    refreshed = load_plan_cache(config_path, config)
+    assert refreshed is not None
+    assert refreshed[0].manifest_hash != report.manifest_hash
+
+    document["files"][0]["checksum"] = "sha256:" + "0" * 64
+    report.manifest_path.write_text(json.dumps(document), encoding="utf-8")
     assert load_plan_cache(config_path, config) is None
 
 

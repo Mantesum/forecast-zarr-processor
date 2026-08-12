@@ -21,9 +21,9 @@ from forecast_zarr.conversion import (
 from forecast_zarr.errors import InputContractError
 from forecast_zarr.grib import EccodesReader, GribReader
 from forecast_zarr.hashing import sha256_file, sha256_json
-from forecast_zarr.inspection import inspect_run
+from forecast_zarr.inspection import inspect_run, source_input_hash
 from forecast_zarr.io import directory_size, read_json, write_json_atomic
-from forecast_zarr.models import InspectionReport, ProcessingPlan
+from forecast_zarr.models import InspectionReport, ProcessingPlan, SourceManifest
 from forecast_zarr.planning import create_plan, enforce_budget
 from forecast_zarr.validation import validate_round_trip, validate_structure
 
@@ -71,7 +71,11 @@ def load_plan_cache(
         return None
     if not report.manifest_path.is_file():
         return None
-    if sha256_file(report.manifest_path) != report.manifest_hash:
+    try:
+        manifest = SourceManifest.model_validate(read_json(report.manifest_path))
+    except (OSError, ValueError):
+        return None
+    if source_input_hash(manifest) != report.input_hash:
         return None
     if any(
         not (report.input_dir / item.name).is_file()
@@ -79,6 +83,14 @@ def load_plan_cache(
         for item in report.source_files
     ):
         return None
+    current_manifest_hash = sha256_file(report.manifest_path)
+    report = report.model_copy(
+        update={
+            "manifest_hash": current_manifest_hash,
+            "license": manifest.license,
+            "attribution": manifest.attribution,
+        }
+    )
     return report, plan
 
 
