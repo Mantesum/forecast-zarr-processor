@@ -2,6 +2,14 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.1] - 2026-08-12
+
+### Fixed
+
+- Resume point-layout rechunking without deleting already completed variables.
+- Rechunk independent variables concurrently according to `runtime.max_workers`.
+- Avoid an increasingly expensive full staging-directory scan after every spatial chunk.
+
 ## [0.4.0] - 2026-08-12
 
 ### Added

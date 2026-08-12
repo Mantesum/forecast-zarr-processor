@@ -9,8 +9,14 @@ import pytest
 import zarr
 
 from forecast_zarr.config import ChunkingConfig
+from forecast_zarr.conversion import (
+    _copy_variable,
+    assemble_final_store,
+    convert_messages,
+)
 from forecast_zarr.errors import InputContractError, ValidationError
 from forecast_zarr.pipeline import build_plan, run_convert
+from forecast_zarr.store import ForecastStore
 from forecast_zarr.validation import validate_structure
 from tests.helpers import (
     decoded_message,
@@ -54,6 +60,35 @@ def test_point_layout_preserves_values_masks_edges_and_2x2(tmp_path: Path) -> No
     assert block.shape == (2, 2, 2)
     assert block[1, -1, -1] == array.attrs["_FillValue"]
     assert np.isfinite(block[0]).all()
+
+
+def test_point_rechunk_resumes_completed_variables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir, reader = source_run(tmp_path)
+    config = processor_config(tmp_path, run_dir).model_copy(
+        update={"chunking": ChunkingConfig(access_pattern="point", point_spatial_chunk=32)}
+    )
+    report, plan = build_plan(config, reader=reader)
+    convert_messages(config, plan, report, reader=reader)
+    assembly = plan.staging_path.with_name(f"{plan.dataset_id}.rechunking.zarr")
+    ForecastStore.create(assembly, plan, report, config)
+    completed = plan.variables[0]
+    ingestion = plan.staging_path.with_name(f"{plan.dataset_id}.ingest.zarr")
+    _copy_variable(config, plan, ingestion, assembly, completed)
+
+    copied: list[str] = []
+
+    def record_copy(*args: object, **kwargs: object) -> str:
+        variable = args[-1]
+        assert hasattr(variable, "name")
+        copied.append(str(variable.name))
+        return _copy_variable(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("forecast_zarr.conversion._copy_variable", record_copy)
+    assert assemble_final_store(config, plan, report) == plan.staging_path
+    assert completed.name not in copied
+    assert plan.staging_path.is_dir()
 
 
 def test_layout_validation_rejects_legacy_point_chunks(tmp_path: Path) -> None:

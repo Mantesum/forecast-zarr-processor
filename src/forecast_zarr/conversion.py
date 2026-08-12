@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from math import ceil
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +15,7 @@ from forecast_zarr.errors import BudgetExceededError, InputContractError
 from forecast_zarr.grib import EccodesReader, GribReader
 from forecast_zarr.inspection import match_message, selected_message_keys
 from forecast_zarr.io import directory_size, read_json, write_json_atomic
-from forecast_zarr.models import ArrayLayout, InspectionReport, ProcessingPlan
+from forecast_zarr.models import ArrayLayout, InspectionReport, ProcessingPlan, VariablePlan
 from forecast_zarr.normalization import (
     normalize_values,
     regular_grid,
@@ -145,6 +147,47 @@ def _owned_store(path: Path, dataset_id: str) -> bool:
     return root.attrs.get("dataset_id") == dataset_id
 
 
+def _variable_complete(path: Path, variable: VariablePlan, shape: tuple[int, ...]) -> bool:
+    """Infer completion for stores created before rechunk checkpoints existed."""
+    group = variable.group
+    name = variable.name
+    shards = variable.layout.shards
+    expected = 1
+    for length, shard in zip(shape, shards, strict=True):
+        expected *= ceil(length / shard)
+    chunk_root = path / group / name / "c"
+    if not chunk_root.is_dir():
+        return False
+    return sum(1 for item in chunk_root.rglob("*") if item.is_file()) == expected
+
+
+def _copy_variable(
+    config: ProcessorConfig,
+    plan: ProcessingPlan,
+    source_path: Path,
+    assembly_path: Path,
+    variable: VariablePlan,
+) -> str:
+    """Copy one variable independently so separate arrays can be rechunked in parallel."""
+    source = ForecastStore.open(source_path, _ingestion_plan(plan), mode="r")
+    target = ForecastStore.open(assembly_path, plan)
+    source_array = source.array(variable)
+    target_array = target.array(variable)
+    _, y_chunk, x_chunk = variable.layout.chunks
+    written = 0
+    guarded_plan = plan.model_copy(update={"staging_path": assembly_path})
+    for y0 in range(0, target_array.shape[1], y_chunk):
+        y1 = min(target_array.shape[1], y0 + y_chunk)
+        for x0 in range(0, target_array.shape[2], x_chunk):
+            x1 = min(target_array.shape[2], x0 + x_chunk)
+            target_array[:, y0:y1, x0:x1] = source_array[:, y0:y1, x0:x1]
+            written += 1
+            if written % 64 == 0:
+                _guard_disk(config, guarded_plan)
+    _guard_disk(config, guarded_plan)
+    return variable.name
+
+
 def assemble_final_store(
     config: ProcessorConfig,
     plan: ProcessingPlan,
@@ -163,24 +206,33 @@ def assemble_final_store(
     if assembly_path.exists():
         if not _owned_store(assembly_path, plan.dataset_id):
             raise InputContractError("rechunk staging path is foreign or invalid")
-        shutil.rmtree(assembly_path)
+        if not config.resume:
+            raise InputContractError(
+                f"rechunk staging directory exists and resume is disabled: {assembly_path}"
+            )
+        target = ForecastStore.open(assembly_path, plan)
+    else:
+        target = ForecastStore.create(assembly_path, plan, report, config)
 
-    source = ForecastStore.open(source_path, _ingestion_plan(plan), mode="r")
-    target = ForecastStore.create(assembly_path, plan, report, config)
-    try:
-        for variable in plan.variables:
-            source_array = source.array(variable)
-            target_array = target.array(variable)
-            _, y_chunk, x_chunk = variable.layout.chunks
-            for y0 in range(0, target_array.shape[1], y_chunk):
-                y1 = min(target_array.shape[1], y0 + y_chunk)
-                for x0 in range(0, target_array.shape[2], x_chunk):
-                    x1 = min(target_array.shape[2], x0 + x_chunk)
-                    target_array[:, y0:y1, x0:x1] = source_array[:, y0:y1, x0:x1]
-                    _guard_disk(config, plan.model_copy(update={"staging_path": assembly_path}))
-    except Exception:
-        # Keep the owned directory for diagnosis; the next resumable run rebuilds it.
-        raise
+    pending = [
+        variable
+        for variable in plan.variables
+        if not _variable_complete(assembly_path, variable, target.array(variable).shape)
+    ]
+    with ThreadPoolExecutor(max_workers=config.runtime.max_workers) as executor:
+        futures = [
+            executor.submit(
+                _copy_variable,
+                config,
+                plan,
+                source_path,
+                assembly_path,
+                variable,
+            )
+            for variable in pending
+        ]
+        for future in as_completed(futures):
+            future.result()
     assembly_path.replace(plan.staging_path)
     return plan.staging_path
 
