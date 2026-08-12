@@ -2,6 +2,13 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.5] - 2026-08-12
+
+### Changed
+
+- Allow up to 16 rechunk workers on larger API hosts while retaining the conservative
+  default of two workers.
+
 ## [0.4.4] - 2026-08-12
 
 ### Changed

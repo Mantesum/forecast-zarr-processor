@@ -21,7 +21,7 @@ class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     memory_budget_gib: float = Field(default=8, gt=0, le=8)
-    max_workers: int = Field(default=2, ge=1, le=2)
+    max_workers: int = Field(default=2, ge=1, le=16)
 
 
 class StorageConfig(BaseModel):
