@@ -47,6 +47,7 @@ def save_plan_cache(
         plan_cache_path(config_path),
         {
             "schema_version": "1.0",
+            "processor_version": __version__,
             "config_hash": _config_hash(config),
             "report": report.model_dump(mode="json"),
             "plan": plan.model_dump(mode="json"),
@@ -62,7 +63,11 @@ def load_plan_cache(
     if not path.is_file():
         return None
     raw = read_json(path)
-    if not isinstance(raw, dict) or raw.get("config_hash") != _config_hash(config):
+    if (
+        not isinstance(raw, dict)
+        or raw.get("processor_version") != __version__
+        or raw.get("config_hash") != _config_hash(config)
+    ):
         return None
     try:
         report = InspectionReport.model_validate(raw.get("report"))

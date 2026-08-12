@@ -2,6 +2,13 @@
 
 All notable changes follow Keep a Changelog conventions. The project uses semantic versioning.
 
+## [0.4.11] - 2026-08-12
+
+### Fixed
+
+- Invalidate cached plans created by a different processor version so upgrades cannot
+  bypass changed planning logic or resource-safety calculations.
+
 ## [0.4.10] - 2026-08-12
 
 ### Changed

@@ -78,6 +78,21 @@ def test_plan_cache_reuses_unchanged_inspection_and_rejects_changed_manifest(
     assert load_plan_cache(config_path, config) is None
 
 
+def test_plan_cache_rejects_different_processor_version(tmp_path: Path) -> None:
+    run_dir, reader = source_run(tmp_path)
+    config = processor_config(tmp_path, run_dir)
+    config_path = tmp_path / "job.yaml"
+    config_path.write_text("test", encoding="utf-8")
+    report, plan = build_plan(config, reader=reader)
+    save_plan_cache(config_path, config, report, plan)
+    cache_path = config_path.with_name(f"{config_path.name}.plan-cache.json")
+    document = json.loads(cache_path.read_text(encoding="utf-8"))
+    document["processor_version"] = "0.0.0"
+    cache_path.write_text(json.dumps(document), encoding="utf-8")
+
+    assert load_plan_cache(config_path, config) is None
+
+
 def test_prepare_plan_does_not_reinspect_valid_cache(tmp_path: Path) -> None:
     run_dir, reader = source_run(tmp_path)
     config = processor_config(tmp_path, run_dir)
